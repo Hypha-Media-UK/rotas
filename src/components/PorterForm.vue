@@ -169,7 +169,7 @@ watch(
   () => props.initialData,
   (newData) => {
     if (newData) {
-      console.log(`📝 PorterForm initializing with data:`, newData)
+      console.log(`📝 PorterForm initializing with data for: ${newData.name}`)
       Object.assign(form.value, newData)
 
       // Set assigned department if porter has department assignments

@@ -167,4 +167,55 @@ export class DepartmentServiceAPI {
       return []
     }
   }
+
+  // Porter assignment methods
+  static async assignPorterToDepartment(porterId: number, departmentId: number): Promise<boolean> {
+    try {
+      console.log(`🔗 Assigning porter ${porterId} to department ${departmentId} via API...`)
+      await ApiClient.assignPorterToDepartment(porterId, departmentId)
+      console.log(
+        `✅ Successfully assigned porter ${porterId} to department ${departmentId} via API`,
+      )
+      return true
+    } catch (error) {
+      console.error(
+        `❌ Error assigning porter ${porterId} to department ${departmentId} via API:`,
+        error,
+      )
+      return false
+    }
+  }
+
+  static async getPorterAssignments(porterId: number): Promise<any[]> {
+    try {
+      console.log(`🔍 Fetching assignments for porter ${porterId} via API...`)
+      const assignments = await ApiClient.getPorterAssignments(porterId)
+      console.log(
+        `✅ Successfully fetched ${assignments.length} assignments for porter ${porterId} via API`,
+      )
+      return assignments
+    } catch (error) {
+      console.error(`❌ Error fetching assignments for porter ${porterId} via API:`, error)
+      return []
+    }
+  }
+
+  static async removePorterAssignment(porterId: number, departmentId: number): Promise<boolean> {
+    try {
+      console.log(
+        `🔗 Removing porter ${porterId} assignment from department ${departmentId} via API...`,
+      )
+      await ApiClient.removePorterAssignment(porterId, departmentId)
+      console.log(
+        `✅ Successfully removed porter ${porterId} assignment from department ${departmentId} via API`,
+      )
+      return true
+    } catch (error) {
+      console.error(
+        `❌ Error removing porter ${porterId} assignment from department ${departmentId} via API:`,
+        error,
+      )
+      return false
+    }
+  }
 }

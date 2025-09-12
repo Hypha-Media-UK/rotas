@@ -62,7 +62,9 @@ export interface PorterDepartmentAssignment {
   id: number
   porter_id: number
   department_id: number
+  shift_pattern_id: string
   is_permanent: boolean
+  is_active: boolean
   start_date?: string
   end_date?: string
   created_at: string

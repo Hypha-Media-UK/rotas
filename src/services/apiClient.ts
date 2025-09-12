@@ -478,6 +478,7 @@ export class ApiClient {
       start_date: assignment.start_date,
       end_date: assignment.end_date,
       is_permanent: Boolean(assignment.is_permanent),
+      is_active: Boolean(assignment.is_active),
       created_at: assignment.created_at,
     }))
   }
@@ -503,7 +504,43 @@ export class ApiClient {
       start_date: newAssignment.start_date,
       end_date: newAssignment.end_date,
       is_permanent: Boolean(newAssignment.is_permanent),
+      is_active: Boolean(newAssignment.is_active),
       created_at: newAssignment.created_at,
+    }
+  }
+
+  // Convenience methods for porter-department assignments
+  static async getPorterAssignments(porterId: number): Promise<PorterDepartmentAssignment[]> {
+    const assignments = await this.getAssignments()
+    return assignments.filter(
+      (assignment) => assignment.porter_id === porterId && assignment.is_active,
+    )
+  }
+
+  static async assignPorterToDepartment(
+    porterId: number,
+    departmentId: number,
+  ): Promise<PorterDepartmentAssignment> {
+    return await this.createAssignment({
+      porter_id: porterId,
+      department_id: departmentId,
+      shift_pattern_id: 'day_shift', // Default shift pattern
+      start_date: new Date().toISOString().split('T')[0],
+      is_permanent: true,
+    })
+  }
+
+  static async removePorterAssignment(porterId: number, departmentId: number): Promise<void> {
+    const assignments = await this.getPorterAssignments(porterId)
+    const assignment = assignments.find((a) => a.department_id === departmentId)
+
+    if (assignment) {
+      await apiRequest(`/assignments/${assignment.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          is_active: false,
+        }),
+      })
     }
   }
 }

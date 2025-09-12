@@ -108,6 +108,7 @@ import { useModal } from '@/composables/useModal'
 import { usePorters } from '@/composables/usePorters'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
 import { ShiftManagementService } from '@/services/shiftManagementService'
+import { ApiClient } from '@/services/apiClient'
 import type { PorterType, PorterFormData, Porter, ShiftType } from '@/types'
 
 type StaffCategory =
@@ -124,6 +125,8 @@ const editingPorter = ref<Porter | null>(null)
 const searchQuery = ref('')
 const shiftTypes = ref<ShiftType[]>([])
 const updatingPorterId = ref<number | null>(null)
+const assignments = ref<any[]>([])
+const departments = ref<any[]>([])
 
 // Use composables
 const addModal = useModal()
@@ -301,8 +304,10 @@ const handleAddPorter = async (data: PorterFormData & { assigned_department_id?:
         `🎯 Assigning new porter ${newPorter.name} (ID: ${newPorter.id}) to department ${assigned_department_id}`,
       )
       try {
-        // TODO: Implement assignPorterToDepartment in API
-        const success = true // await DepartmentServiceAPI.assignPorterToDepartment(newPorter.id, assigned_department_id)
+        const success = await DepartmentServiceAPI.assignPorterToDepartment(
+          newPorter.id,
+          assigned_department_id,
+        )
         if (success) {
           console.log(
             `✅ Successfully assigned porter ${newPorter.name} to department ${assigned_department_id}`,
@@ -321,15 +326,16 @@ const handleAddPorter = async (data: PorterFormData & { assigned_department_id?:
     }
 
     addModal.close()
+    // Reload assignments to reflect changes
+    await loadAssignments()
   } catch (error) {
     console.error('Failed to create porter:', error)
   }
 }
 
-const handleEditPorter = (porter: Porter) => {
+const handleEditPorter = async (porter: Porter) => {
   // Get department assignments for this porter
-  // TODO: Implement getPorterAssignments in API
-  const assignments = [] // DepartmentServiceAPI.getPorterAssignments(porter.id)
+  const assignments = await DepartmentServiceAPI.getPorterAssignments(porter.id)
 
   // Create enhanced porter data with department assignments
   const porterWithAssignments = {
@@ -337,7 +343,8 @@ const handleEditPorter = (porter: Porter) => {
     department_assignments: assignments,
   }
 
-  console.log(`📝 Editing porter ${porter.name} with assignments:`, assignments)
+  console.log(`📝 Editing porter ${porter.name} (ID: ${porter.id}) with assignments:`, assignments)
+  console.log(`📝 Porter data being passed to form:`, porterWithAssignments)
 
   editingPorter.value = porterWithAssignments
   editModal.open()
@@ -378,8 +385,10 @@ const handleUpdatePorter = async (data: PorterFormData & { assigned_department_i
       if (assigned_department_id) {
         console.log(`➕ Adding new assignment to department ${assigned_department_id}`)
         try {
-          // TODO: Implement assignPorterToDepartment in API
-          const success = true // await DepartmentServiceAPI.assignPorterToDepartment(editingPorter.value.id, assigned_department_id)
+          const success = await DepartmentServiceAPI.assignPorterToDepartment(
+            editingPorter.value.id,
+            assigned_department_id,
+          )
           if (success) {
             console.log(
               `✅ Successfully updated porter ${editingPorter.value.name} assignment to department ${assigned_department_id}`,
@@ -399,6 +408,8 @@ const handleUpdatePorter = async (data: PorterFormData & { assigned_department_i
 
     editModal.close()
     editingPorter.value = null
+    // Reload assignments to reflect changes
+    await loadAssignments()
   } catch (error) {
     console.error('Failed to update porter:', error)
   }
@@ -418,15 +429,45 @@ const clearSearch = () => {
   searchQuery.value = ''
 }
 
+// Create a computed property for porter department mappings
+const porterDepartmentMap = computed(() => {
+  const map = new Map<number, string>()
+
+  assignments.value.forEach((assignment) => {
+    if (assignment.is_active) {
+      const department = departments.value.find((d) => d.id === assignment.department_id)
+      if (department) {
+        map.set(assignment.porter_id, department.name)
+      }
+    }
+  })
+
+  // console.log('🗺️ Porter department map:', Object.fromEntries(map))
+  return map
+})
+
 // Get department name for a porter
 const getPorterDepartmentName = (porterId: number): string | null => {
-  // TODO: Implement porter assignments in API
-  // const assignments = DepartmentServiceAPI.getPorterAssignments(porterId)
-  // if (assignments.length === 0) return null
-  // const departmentId = assignments[0].department_id
-  // const department = await DepartmentServiceAPI.getDepartmentById(departmentId)
-  // return department?.name || null
-  return null // Temporary until assignments are implemented
+  return porterDepartmentMap.value.get(porterId) || null
+}
+
+// Load assignments and departments data
+const loadAssignments = async () => {
+  try {
+    assignments.value = await ApiClient.getAssignments()
+    console.log(`🔗 Loaded ${assignments.value.length} assignments`)
+  } catch (error) {
+    console.error('Failed to load assignments:', error)
+  }
+}
+
+const loadDepartments = async () => {
+  try {
+    departments.value = await DepartmentServiceAPI.getAllDepartments()
+    console.log(`🏢 Loaded ${departments.value.length} departments`)
+  } catch (error) {
+    console.error('Failed to load departments:', error)
+  }
 }
 
 // Shift Management Functions
@@ -489,8 +530,15 @@ const updatePorterShiftAllocation = async (porterId: number, shiftTypeId: string
   }
 }
 
-// Load shift types on component mount
-loadShiftTypes()
+// Load data on component mount
+const initializeData = async () => {
+  await loadShiftTypes()
+  await loadDepartments()
+  await loadAssignments()
+  console.log('🚀 All data loaded successfully')
+}
+
+initializeData()
 </script>
 
 <style scoped>
