@@ -9,12 +9,14 @@ CREATE TABLE porters (
     email VARCHAR(255) UNIQUE NOT NULL,
     phone VARCHAR(20),
     role VARCHAR(100) NOT NULL,
+    shift_group VARCHAR(255) NULL,
     qualifications JSON,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_employee_id (employee_id),
     INDEX idx_role (role),
+    INDEX idx_shift_group (shift_group),
     INDEX idx_active (is_active)
 );
 

@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('../views/FutureWeeksView.vue'),
     },
     {
+      path: '/shift-management',
+      name: 'shift-management',
+      component: () => import('../views/ShiftManagementView.vue'),
+    },
+    {
       path: '/mysql-test',
       name: 'mysql-test',
       component: () => import('../views/MySQLTestView.vue'),

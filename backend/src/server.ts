@@ -46,7 +46,7 @@ app.get('/api/porters/:id', async (req, res) => {
 app.post('/api/porters', async (req, res) => {
   try {
     const { name, employee_id, email, phone, role, qualifications } = req.body
-    
+
     if (!name || !employee_id || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
@@ -57,9 +57,9 @@ app.post('/api/porters', async (req, res) => {
       email,
       phone,
       role,
-      qualifications
+      qualifications,
     })
-    
+
     res.status(201).json(porter)
   } catch (error) {
     console.error('Error creating porter:', error)
@@ -71,7 +71,7 @@ app.put('/api/porters/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id)
     const updates = req.body
-    
+
     await DatabaseService.updatePorter(id, updates)
     res.json({ message: 'Porter updated successfully' })
   } catch (error) {
@@ -119,7 +119,7 @@ app.get('/api/departments/:id', async (req, res) => {
 app.post('/api/departments', async (req, res) => {
   try {
     const { name, code, operating_hours, required_staff } = req.body
-    
+
     if (!name || !code || !operating_hours || required_staff === undefined) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
@@ -128,9 +128,9 @@ app.post('/api/departments', async (req, res) => {
       name,
       code,
       operating_hours,
-      required_staff
+      required_staff,
     })
-    
+
     res.status(201).json(department)
   } catch (error) {
     console.error('Error creating department:', error)
@@ -142,7 +142,7 @@ app.put('/api/departments/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id)
     const updates = req.body
-    
+
     await DatabaseService.updateDepartment(id, updates)
     res.json({ message: 'Department updated successfully' })
   } catch (error) {
@@ -173,6 +173,93 @@ app.get('/api/shift-patterns', async (req, res) => {
   }
 })
 
+app.get('/api/shift-patterns/:id', async (req, res) => {
+  try {
+    const id = req.params.id
+    const shiftPattern = await DatabaseService.getShiftPatternById(id)
+    if (!shiftPattern) {
+      return res.status(404).json({ error: 'Shift pattern not found' })
+    }
+    res.json(shiftPattern)
+  } catch (error) {
+    console.error('Error fetching shift pattern:', error)
+    res.status(500).json({ error: 'Failed to fetch shift pattern' })
+  }
+})
+
+app.post('/api/shift-patterns', async (req, res) => {
+  try {
+    const {
+      id,
+      name,
+      description,
+      start_time,
+      end_time,
+      rotation_type,
+      rotation_days,
+      offset_days,
+      is_active,
+    } = req.body
+
+    if (
+      !id ||
+      !name ||
+      !start_time ||
+      !end_time ||
+      !rotation_type ||
+      rotation_days === undefined ||
+      offset_days === undefined
+    ) {
+      return res.status(400).json({ error: 'Missing required fields' })
+    }
+
+    const shiftPattern = await DatabaseService.createShiftPattern({
+      id,
+      name,
+      description,
+      start_time,
+      end_time,
+      rotation_type,
+      rotation_days,
+      offset_days,
+      is_active,
+    })
+
+    res.status(201).json(shiftPattern)
+  } catch (error) {
+    console.error('Error creating shift pattern:', error)
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(409).json({ error: 'Shift pattern with this ID already exists' })
+    } else {
+      res.status(500).json({ error: 'Failed to create shift pattern' })
+    }
+  }
+})
+
+app.put('/api/shift-patterns/:id', async (req, res) => {
+  try {
+    const id = req.params.id
+    const updates = req.body
+
+    await DatabaseService.updateShiftPattern(id, updates)
+    res.json({ message: 'Shift pattern updated successfully' })
+  } catch (error) {
+    console.error('Error updating shift pattern:', error)
+    res.status(500).json({ error: 'Failed to update shift pattern' })
+  }
+})
+
+app.delete('/api/shift-patterns/:id', async (req, res) => {
+  try {
+    const id = req.params.id
+    await DatabaseService.deleteShiftPattern(id)
+    res.json({ message: 'Shift pattern deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting shift pattern:', error)
+    res.status(500).json({ error: 'Failed to delete shift pattern' })
+  }
+})
+
 // Assignment routes
 app.get('/api/assignments', async (req, res) => {
   try {
@@ -186,9 +273,16 @@ app.get('/api/assignments', async (req, res) => {
 
 app.post('/api/assignments', async (req, res) => {
   try {
-    const { porter_id, department_id, shift_pattern_id, start_date, end_date, is_permanent } = req.body
-    
-    if (!porter_id || !department_id || !shift_pattern_id || !start_date || is_permanent === undefined) {
+    const { porter_id, department_id, shift_pattern_id, start_date, end_date, is_permanent } =
+      req.body
+
+    if (
+      !porter_id ||
+      !department_id ||
+      !shift_pattern_id ||
+      !start_date ||
+      is_permanent === undefined
+    ) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
@@ -198,9 +292,9 @@ app.post('/api/assignments', async (req, res) => {
       shift_pattern_id,
       start_date,
       end_date,
-      is_permanent
+      is_permanent,
     })
-    
+
     res.status(201).json(assignment)
   } catch (error) {
     console.error('Error creating assignment:', error)
@@ -212,11 +306,11 @@ app.post('/api/assignments', async (req, res) => {
 async function startServer() {
   try {
     console.log('🚀 Starting Rotas API server...')
-    
+
     // Connect to database
     await DatabaseService.connect()
     console.log('✅ Database connected')
-    
+
     // Start server
     app.listen(PORT, () => {
       console.log(`🌟 Server running on http://localhost:${PORT}`)

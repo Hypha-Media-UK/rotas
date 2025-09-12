@@ -19,7 +19,7 @@
     <!-- Department List -->
     <div class="department-list">
       <div
-        v-for="(department, index) in departments"
+        v-for="(department, index) in departmentsDisplay"
         :key="department.id"
         class="department-card"
         draggable="true"
@@ -34,9 +34,6 @@
           </div>
           <div class="department-details">
             <span class="detail-item">
-              <strong>Type:</strong> {{ formatDepartmentType(department.department_type) }}
-            </span>
-            <span class="detail-item">
               <strong>Operating:</strong> {{ formatOperatingSchedule(department) }}
             </span>
             <span class="detail-item">
@@ -45,9 +42,6 @@
           </div>
         </div>
         <div class="department-actions">
-          <button @click="assignPorters(department)" class="btn btn-sm btn-primary">
-            Assign Porters
-          </button>
           <button @click="editDepartment(department)" class="btn btn-sm btn-secondary">Edit</button>
           <button @click="deleteDepartment(department.id)" class="btn btn-sm btn-danger">
             Delete
@@ -57,7 +51,7 @@
     </div>
 
     <!-- Empty State -->
-    <div v-if="departments.length === 0" class="empty-state">
+    <div v-if="departmentsDisplay.length === 0" class="empty-state">
       <h3>No Departments Found</h3>
       <p>Get started by adding your first department.</p>
       <button @click="showAddModal = true" class="btn btn-primary">Add Department</button>
@@ -96,97 +90,77 @@
               />
             </div>
 
-            <!-- Department Type Selection -->
-            <div class="form-group">
-              <label for="department-type">Department Type</label>
-              <select
-                id="department-type"
-                v-model="departmentForm.department_type"
-                class="form-input"
-                @change="onDepartmentTypeChange"
-              >
-                <option value="standard_hours">Standard Hours</option>
-                <option value="shift_rotation">Shift Rotation (4-on/4-off)</option>
-                <option value="emergency_24h">Emergency 24h</option>
-                <option value="relief">Relief</option>
-                <option value="on_demand">On Demand</option>
-              </select>
-            </div>
-
-            <!-- Operating Schedule Options -->
+            <!-- Operating Schedule - Quick Options -->
             <div class="form-group">
               <label>Operating Schedule</label>
-              <div class="schedule-options">
-                <label class="checkbox-option">
+              <div class="schedule-quick-options">
+                <label class="radio-option">
                   <input
                     type="radio"
-                    name="schedule-type"
-                    value="all-days"
-                    :checked="scheduleType === 'all-days'"
-                    @change="onScheduleTypeChange('all-days')"
+                    name="schedule-preset"
+                    value="custom"
+                    :checked="schedulePreset === 'custom'"
+                    @change="setSchedulePreset('custom')"
                   />
-                  <span>All Days</span>
+                  <span>Custom Schedule</span>
                 </label>
-                <label class="checkbox-option">
+                <label class="radio-option">
                   <input
                     type="radio"
-                    name="schedule-type"
-                    value="24-hours"
-                    :checked="scheduleType === '24-hours'"
-                    @change="onScheduleTypeChange('24-hours')"
+                    name="schedule-preset"
+                    value="24hours"
+                    :checked="schedulePreset === '24hours'"
+                    @change="setSchedulePreset('24hours')"
                   />
-                  <span>24 Hours</span>
-                </label>
-                <label class="checkbox-option">
-                  <input
-                    type="radio"
-                    name="schedule-type"
-                    value="set-days-times"
-                    :checked="scheduleType === 'set-days-times'"
-                    @change="onScheduleTypeChange('set-days-times')"
-                  />
-                  <span>Set Days and Times</span>
+                  <span>24 Hours (All Days)</span>
                 </label>
               </div>
             </div>
 
-            <!-- Time Range (shown for All Days and Set Days and Times) -->
-            <div v-if="scheduleType !== '24-hours'" class="form-group">
-              <div class="time-range">
-                <div class="time-input-group">
-                  <label for="start-time">Start Time</label>
-                  <input
-                    id="start-time"
-                    v-model="departmentForm.operating_schedule.start_time"
-                    type="time"
-                    class="form-input"
-                  />
-                </div>
-                <div class="time-input-group">
-                  <label for="end-time">End Time</label>
-                  <input
-                    id="end-time"
-                    v-model="departmentForm.operating_schedule.end_time"
-                    type="time"
-                    class="form-input"
-                  />
+            <!-- Daily Schedule (shown only for custom) -->
+            <div v-if="schedulePreset === 'custom'" class="form-group">
+              <label>Daily Operating Hours</label>
+              <div class="daily-schedule">
+                <div v-for="(day, index) in dayNames" :key="index" class="day-schedule">
+                  <div class="day-header">
+                    <label class="day-checkbox">
+                      <input
+                        type="checkbox"
+                        :checked="departmentForm.operating_hours[day.toLowerCase()]"
+                        @change="toggleDayOperating(day.toLowerCase())"
+                      />
+                      <span class="day-name">{{ day }}</span>
+                    </label>
+                  </div>
+                  <div v-if="departmentForm.operating_hours[day.toLowerCase()]" class="day-times">
+                    <div class="time-input-group">
+                      <label>Start</label>
+                      <input
+                        v-model="departmentForm.operating_hours[day.toLowerCase()].start"
+                        type="time"
+                        class="form-input time-input"
+                      />
+                    </div>
+                    <div class="time-input-group">
+                      <label>End</label>
+                      <input
+                        v-model="departmentForm.operating_hours[day.toLowerCase()].end"
+                        type="time"
+                        class="form-input time-input"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Days Selection (shown only for Set Days and Times) -->
-            <div v-if="scheduleType === 'set-days-times'" class="form-group">
-              <label>Operating Days</label>
-              <div class="days-selection">
-                <label v-for="(day, index) in dayNames" :key="index" class="day-checkbox">
-                  <input
-                    type="checkbox"
-                    :value="index"
-                    :checked="departmentForm.operating_schedule.days_of_week.includes(index)"
-                    @change="toggleDay(index)"
-                  />
-                  <span>{{ day }}</span>
-                </label>
+            <!-- 24 Hours Summary (shown only for 24hours preset) -->
+            <div v-if="schedulePreset === '24hours'" class="form-group">
+              <div class="schedule-summary">
+                <p class="schedule-info">
+                  <strong>24-Hour Operation:</strong> This department operates continuously, 24
+                  hours a day, 7 days a week.
+                </p>
               </div>
             </div>
 
@@ -200,155 +174,88 @@
         </div>
       </div>
     </div>
-
-    <!-- Porter Assignment Modal -->
-    <div v-if="showPorterAssignmentModal" class="modal-overlay" @click="closePorterAssignmentModal">
-      <div class="modal-content" @click.stop>
-        <div class="modal-header">
-          <h2>Assign Porters</h2>
-          <button @click="closePorterAssignmentModal" class="modal-close">&times;</button>
-        </div>
-        <div class="modal-body">
-          <PorterAssignment
-            v-if="selectedDepartment"
-            :department="selectedDepartment"
-            @updated="handlePorterAssignmentUpdate"
-          />
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import PorterAssignment from '@/components/PorterAssignment.vue'
+import { ref, onMounted, computed } from 'vue'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
-import type { Department, DepartmentFormData } from '@/types'
+import type { Department } from '@/types'
 
 const departments = ref<Department[]>([])
 const showAddModal = ref(false)
 const editingDepartment = ref<Department | null>(null)
 const draggedIndex = ref<number | null>(null)
-const showPorterAssignmentModal = ref(false)
-const selectedDepartment = ref<Department | null>(null)
 
-// Schedule type for the modal
-const scheduleType = ref<'all-days' | '24-hours' | 'set-days-times'>('all-days')
-
-// Day names for the days selection
+// Day names for the schedule
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-const departmentForm = ref<DepartmentFormData>({
+// Schedule preset mode
+const schedulePreset = ref<'custom' | '24hours'>('custom')
+
+// Computed property to get display data for departments, considering active edits
+const departmentsDisplay = computed(() => {
+  return departments.value.map((department) => {
+    // If this department is being edited, use the form data for display
+    if (editingDepartment.value && editingDepartment.value.id === department.id) {
+      return {
+        ...department,
+        name: departmentForm.value.name,
+        min_porters_required: departmentForm.value.min_porters_required,
+        operating_hours: departmentForm.value.operating_hours,
+      }
+    }
+    // Otherwise use the original department data
+    return department
+  })
+})
+
+// Form data structure matching the database schema
+const departmentForm = ref({
   name: '',
   min_porters_required: 1,
-  department_type: 'standard_hours',
-  operating_schedule: {
-    days_of_week: [1, 2, 3, 4, 5], // Monday-Friday default
-    start_time: '08:00',
-    end_time: '17:00',
-    is_24_hour: false,
-    requires_shift_support: false,
+  operating_hours: {
+    sunday: null,
+    monday: { start: '08:00', end: '17:00' },
+    tuesday: { start: '08:00', end: '17:00' },
+    wednesday: { start: '08:00', end: '17:00' },
+    thursday: { start: '08:00', end: '17:00' },
+    friday: { start: '08:00', end: '17:00' },
+    saturday: null,
   },
 })
 
-// Handle department type changes
-const onDepartmentTypeChange = () => {
-  // Set default operating schedule based on department type
-  const type = departmentForm.value.department_type
+// Set schedule preset and update operating hours accordingly
+const setSchedulePreset = (preset: 'custom' | '24hours') => {
+  schedulePreset.value = preset
 
-  switch (type) {
-    case 'shift_rotation':
-      scheduleType.value = 'all-days'
-      departmentForm.value.operating_schedule = {
-        days_of_week: [],
-        start_time: '07:00',
-        end_time: '19:00',
-        is_24_hour: false,
-        requires_shift_support: false,
-      }
-      break
-    case 'emergency_24h':
-      scheduleType.value = '24-hours'
-      departmentForm.value.operating_schedule = {
-        days_of_week: [],
-        start_time: '00:00',
-        end_time: '23:59',
-        is_24_hour: true,
-        requires_shift_support: true,
-      }
-      break
-    case 'relief':
-      scheduleType.value = '24-hours'
-      departmentForm.value.operating_schedule = {
-        days_of_week: [],
-        start_time: '00:00',
-        end_time: '23:59',
-        is_24_hour: true,
-        requires_shift_support: false,
-      }
-      break
-    case 'standard_hours':
-      scheduleType.value = 'set-days-times'
-      departmentForm.value.operating_schedule = {
-        days_of_week: [1, 2, 3, 4, 5], // Monday-Friday
-        start_time: '08:00',
-        end_time: '17:00',
-        is_24_hour: false,
-        requires_shift_support: false,
-      }
-      break
-    case 'on_demand':
-      scheduleType.value = 'all-days'
-      departmentForm.value.operating_schedule = {
-        days_of_week: [],
-        start_time: '09:00',
-        end_time: '17:00',
-        is_24_hour: false,
-        requires_shift_support: false,
-      }
-      break
+  if (preset === '24hours') {
+    // Set all days to 24-hour operation
+    departmentForm.value.operating_hours = {
+      sunday: { start: '00:00', end: '23:59' },
+      monday: { start: '00:00', end: '23:59' },
+      tuesday: { start: '00:00', end: '23:59' },
+      wednesday: { start: '00:00', end: '23:59' },
+      thursday: { start: '00:00', end: '23:59' },
+      friday: { start: '00:00', end: '23:59' },
+      saturday: { start: '00:00', end: '23:59' },
+    }
   }
+  // For 'custom', keep existing hours as they are
 }
 
-// Handle schedule type changes
-const onScheduleTypeChange = (type: 'all-days' | '24-hours' | 'set-days-times') => {
-  scheduleType.value = type
-
-  switch (type) {
-    case 'all-days':
-      departmentForm.value.operating_schedule.days_of_week = []
-      departmentForm.value.operating_schedule.is_24_hour = false
-      break
-    case '24-hours':
-      departmentForm.value.operating_schedule.days_of_week = []
-      departmentForm.value.operating_schedule.is_24_hour = true
-      departmentForm.value.operating_schedule.start_time = '00:00'
-      departmentForm.value.operating_schedule.end_time = '23:59'
-      break
-    case 'set-days-times':
-      departmentForm.value.operating_schedule.is_24_hour = false
-      // Keep existing days or set to weekdays if empty
-      if (departmentForm.value.operating_schedule.days_of_week.length === 0) {
-        departmentForm.value.operating_schedule.days_of_week = [1, 2, 3, 4, 5] // Monday-Friday
-      }
-      break
-  }
-}
-
-// Toggle day selection
-const toggleDay = (dayIndex: number) => {
-  const days = departmentForm.value.operating_schedule.days_of_week
-  const index = days.indexOf(dayIndex)
-
-  if (index > -1) {
-    days.splice(index, 1)
+// Toggle day operating status
+const toggleDayOperating = (day: string) => {
+  if (departmentForm.value.operating_hours[day]) {
+    // Day is currently operating, disable it
+    departmentForm.value.operating_hours[day] = null
   } else {
-    days.push(dayIndex)
+    // Day is not operating, enable it with default times
+    departmentForm.value.operating_hours[day] = {
+      start: '08:00',
+      end: '17:00',
+    }
   }
-
-  // Sort the days array
-  days.sort((a, b) => a - b)
 }
 
 const loadDepartments = async () => {
@@ -470,18 +377,28 @@ const editDepartment = (department: Department) => {
   departmentForm.value = {
     name: department.name,
     min_porters_required: department.min_porters_required,
-    department_type: department.department_type,
-    operating_schedule: { ...department.operating_schedule },
+    operating_hours: department.operating_hours
+      ? { ...department.operating_hours }
+      : {
+          sunday: null,
+          monday: { start: '08:00', end: '17:00' },
+          tuesday: { start: '08:00', end: '17:00' },
+          wednesday: { start: '08:00', end: '17:00' },
+          thursday: { start: '08:00', end: '17:00' },
+          friday: { start: '08:00', end: '17:00' },
+          saturday: null,
+        },
   }
 
-  // Set the correct schedule type based on the department's operating schedule
-  if (department.operating_schedule.is_24_hour) {
-    scheduleType.value = '24-hours'
-  } else if (department.operating_schedule.days_of_week.length === 0) {
-    scheduleType.value = 'all-days'
-  } else {
-    scheduleType.value = 'set-days-times'
-  }
+  // Detect if this is a 24-hour schedule
+  const is24Hours =
+    department.operating_hours &&
+    Object.values(department.operating_hours).every(
+      (hours) => hours && hours.start === '00:00' && hours.end === '23:59',
+    )
+
+  schedulePreset.value = is24Hours ? '24hours' : 'custom'
+  showAddModal.value = true
 }
 
 const deleteDepartment = async (departmentId: number) => {
@@ -502,13 +419,28 @@ const deleteDepartment = async (departmentId: number) => {
 const saveDepartment = async () => {
   try {
     if (editingDepartment.value) {
+      // Update the department via API
       await DepartmentServiceAPI.updateDepartment(editingDepartment.value.id, departmentForm.value)
+
+      // Update the local departments array immediately for better UX
+      const index = departments.value.findIndex((d) => d.id === editingDepartment.value!.id)
+      if (index !== -1) {
+        departments.value[index] = {
+          ...departments.value[index],
+          name: departmentForm.value.name,
+          min_porters_required: departmentForm.value.min_porters_required,
+          operating_hours: departmentForm.value.operating_hours,
+        }
+      }
     } else {
-      await DepartmentServiceAPI.createDepartment(departmentForm.value)
+      // Create new department
+      const newDepartment = await DepartmentServiceAPI.createDepartment(departmentForm.value)
+      departments.value.push(newDepartment)
     }
 
-    await loadDepartments()
     closeModal()
+    // Reload to ensure consistency with backend
+    await loadDepartments()
   } catch (error) {
     console.error('Failed to save department:', error)
   }
@@ -517,52 +449,52 @@ const saveDepartment = async () => {
 const closeModal = () => {
   showAddModal.value = false
   editingDepartment.value = null
-  scheduleType.value = 'set-days-times' // Reset to default
+  schedulePreset.value = 'custom'
   departmentForm.value = {
     name: '',
     min_porters_required: 1,
-    department_type: 'standard_hours',
-    operating_schedule: {
-      days_of_week: [1, 2, 3, 4, 5], // Monday-Friday default
-      start_time: '08:00',
-      end_time: '17:00',
-      is_24_hour: false,
-      requires_shift_support: false,
+    operating_hours: {
+      sunday: null,
+      monday: { start: '08:00', end: '17:00' },
+      tuesday: { start: '08:00', end: '17:00' },
+      wednesday: { start: '08:00', end: '17:00' },
+      thursday: { start: '08:00', end: '17:00' },
+      friday: { start: '08:00', end: '17:00' },
+      saturday: null,
     },
   }
 }
 
-const assignPorters = (department: Department) => {
-  selectedDepartment.value = department
-  showPorterAssignmentModal.value = true
-}
-
-const closePorterAssignmentModal = () => {
-  showPorterAssignmentModal.value = false
-  selectedDepartment.value = null
-}
-
-const handlePorterAssignmentUpdate = () => {
-  // Refresh departments if needed
-  loadDepartments()
-}
-
-// Format department type for display
-const formatDepartmentType = (type: string): string => {
-  const typeMap: Record<string, string> = {
-    shift_rotation: 'Shift Rotation',
-    relief: 'Relief',
-    emergency_24h: 'Emergency 24h',
-    standard_hours: 'Standard Hours',
-    on_demand: 'On Demand',
-  }
-  return typeMap[type] || type
-}
-
 // Format operating schedule for display
 const formatOperatingSchedule = (department: Department): string => {
-  // TODO: Implement formatOperatingSchedule in API or move to utils
-  return '24/7' // Temporary placeholder
+  if (!department.operating_hours) return 'Not set'
+
+  // Valid day names to filter out old format fields
+  const validDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+
+  const operatingDays = Object.entries(department.operating_hours).filter(([day, hours]) => {
+    // Only process valid day names with proper hour objects
+    return (
+      validDays.includes(day.toLowerCase()) &&
+      hours !== null &&
+      typeof hours === 'object' &&
+      hours.start &&
+      hours.end
+    )
+  })
+
+  if (operatingDays.length === 0) return 'Not set'
+
+  // Check if it's 24/7 operation
+  const is24Hours =
+    operatingDays.length === 7 &&
+    operatingDays.every(([_, hours]) => hours.start === '00:00' && hours.end === '23:59')
+
+  if (is24Hours) return '24/7'
+
+  // Show number of operating days
+  const dayCount = operatingDays.length
+  return dayCount === 1 ? '1 Day' : `${dayCount} Days`
 }
 
 // Drag and drop for reordering
@@ -829,6 +761,105 @@ onMounted(() => {
 .time-input-group label {
   margin-bottom: var(--spacing-xs);
   font-size: 0.875rem;
+}
+
+/* Schedule Quick Options */
+.schedule-quick-options {
+  display: flex;
+  gap: var(--spacing-lg);
+  margin-top: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  cursor: pointer;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  background: var(--color-background);
+  transition: all 0.2s ease;
+}
+
+.radio-option:hover {
+  background: var(--color-background-soft);
+  border-color: var(--color-primary);
+}
+
+.radio-option input[type='radio']:checked + span {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.radio-option input[type='radio'] {
+  margin: 0;
+}
+
+/* Schedule Summary */
+.schedule-summary {
+  padding: var(--spacing-md);
+  background: var(--color-background-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  margin-top: var(--spacing-sm);
+}
+
+.schedule-info {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+/* Daily Schedule */
+.daily-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.day-schedule {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  background: var(--color-background);
+}
+
+.day-header {
+  min-width: 120px;
+}
+
+.day-name {
+  font-weight: 500;
+  margin-left: var(--spacing-xs);
+}
+
+.day-times {
+  display: flex;
+  gap: var(--spacing-lg);
+  flex: 1;
+  align-items: center;
+}
+
+.time-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.time-input-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.time-input {
+  width: 120px;
+  min-width: 120px;
 }
 
 /* Days Selection */

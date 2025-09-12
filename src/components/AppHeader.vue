@@ -9,11 +9,26 @@
         <RouterLink to="/staff" class="nav-link" :class="{ active: $route.name === 'staff' }">
           Staff
         </RouterLink>
-        <RouterLink to="/departments" class="nav-link" :class="{ active: $route.name === 'departments' }">
+        <RouterLink
+          to="/departments"
+          class="nav-link"
+          :class="{ active: $route.name === 'departments' }"
+        >
           Departments
         </RouterLink>
-        <RouterLink to="/future-weeks" class="nav-link" :class="{ active: $route.name === 'future-weeks' }">
+        <RouterLink
+          to="/future-weeks"
+          class="nav-link"
+          :class="{ active: $route.name === 'future-weeks' }"
+        >
           Future Weeks
+        </RouterLink>
+        <RouterLink
+          to="/shift-management"
+          class="nav-link"
+          :class="{ active: $route.name === 'shift-management' }"
+        >
+          Shifts
         </RouterLink>
       </nav>
     </div>
@@ -84,12 +99,12 @@ import { RouterLink } from 'vue-router'
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .main-nav {
     width: 100%;
     justify-content: flex-start;
   }
-  
+
   .nav-link {
     flex: 1;
     text-align: center;

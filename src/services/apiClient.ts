@@ -1,5 +1,11 @@
 // API client for communicating with the backend server
-import type { Porter, Department, ShiftPattern, PorterDepartmentAssignment } from '@/types'
+import type {
+  Porter,
+  Department,
+  ShiftPattern,
+  PorterDepartmentAssignment,
+  ShiftType,
+} from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -108,13 +114,7 @@ export class ApiClient {
       type: porter.role as any, // Map role to type
       contracted_hours: undefined, // Not in backend yet
       break_duration_minutes: 30, // Default value
-      shift_group: porter.role.includes('Day')
-        ? 'Day Shift'
-        : porter.role.includes('Night')
-          ? 'Night Shift'
-          : porter.role.includes('PTS')
-            ? 'PTS'
-            : undefined,
+      shift_group: porter.shift_group || undefined, // Use actual shift_group from database
       is_active: Boolean(porter.is_active),
       employee_id: porter.employee_id,
       email: porter.email,
@@ -216,6 +216,7 @@ export class ApiClient {
     if (updates.phone !== undefined) backendUpdates.phone = updates.phone
     if (updates.qualifications !== undefined) backendUpdates.qualifications = updates.qualifications
     if (updates.is_active !== undefined) backendUpdates.is_active = updates.is_active
+    if (updates.shift_group !== undefined) backendUpdates.shift_group = updates.shift_group
 
     await apiRequest(`/porters/${id}`, {
       method: 'PUT',
@@ -229,6 +230,118 @@ export class ApiClient {
     })
   }
 
+  // Transform backend shift pattern data to frontend format
+  private static transformShiftPatternToShiftType(pattern: any): ShiftType {
+    return {
+      id: pattern.id,
+      name: pattern.name,
+      description: pattern.description || '',
+      start_time: pattern.start_time,
+      end_time: pattern.end_time,
+      rotation_type: pattern.rotation_type,
+      rotation_days: pattern.rotation_days,
+      offset_days: pattern.offset_days,
+      is_active: pattern.is_active,
+      created_at: pattern.created_at,
+      updated_at: pattern.updated_at,
+    }
+  }
+
+  // Transform frontend shift type data to backend format
+  private static transformShiftTypeToShiftPattern(shiftType: any): any {
+    return {
+      id: shiftType.id,
+      name: shiftType.name,
+      description: shiftType.description || null,
+      start_time: shiftType.start_time,
+      end_time: shiftType.end_time,
+      rotation_type: shiftType.rotation_type,
+      rotation_days: shiftType.rotation_days,
+      offset_days: shiftType.offset_days,
+      is_active: shiftType.is_active !== false,
+    }
+  }
+
+  // Shift Type operations
+  static async getShiftTypes(): Promise<ShiftType[]> {
+    console.log('🔍 Fetching shift types from database...')
+    const patterns = await apiRequest<any[]>('/shift-patterns')
+    const shiftTypes = patterns.map(this.transformShiftPatternToShiftType)
+    console.log(`✅ Found ${shiftTypes.length} shift types in database`)
+    return shiftTypes
+  }
+
+  static async getShiftTypeById(id: string): Promise<ShiftType | null> {
+    console.log(`🔍 Searching for shift type ${id} in database...`)
+    try {
+      const pattern = await apiRequest<any>(`/shift-patterns/${id}`)
+      const shiftType = this.transformShiftPatternToShiftType(pattern)
+      console.log(`✅ Found shift type: ${shiftType.name}`)
+      return shiftType
+    } catch (error) {
+      console.log(`❌ Shift type ${id} not found in database`)
+      return null
+    }
+  }
+
+  static async createShiftType(shiftType: {
+    name: string
+    description?: string
+    start_time: string
+    end_time: string
+    rotation_type: 'fixed' | 'alternating' | 'rotating'
+    rotation_days: number
+    offset_days: number
+    is_active: boolean
+  }): Promise<ShiftType> {
+    console.log(`🆕 Creating new shift type: ${shiftType.name}`)
+    const shiftTypeWithId = {
+      id: `shift_${Date.now()}`,
+      ...shiftType,
+    }
+
+    const backendData = this.transformShiftTypeToShiftPattern(shiftTypeWithId)
+    const createdPattern = await apiRequest<any>('/shift-patterns', {
+      method: 'POST',
+      body: JSON.stringify(backendData),
+    })
+
+    const newShiftType = this.transformShiftPatternToShiftType(createdPattern)
+    console.log(
+      `✅ Successfully created shift type in database: ${newShiftType.name} (ID: ${newShiftType.id})`,
+    )
+
+    return newShiftType
+  }
+
+  static async updateShiftType(id: string, updates: Partial<ShiftType>): Promise<void> {
+    console.log(`📝 Updating shift type ${id} in database...`)
+
+    const backendUpdates = this.transformShiftTypeToShiftPattern(updates)
+    await apiRequest(`/shift-patterns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(backendUpdates),
+    })
+
+    console.log(`✅ Successfully updated shift type ${id} in database`)
+  }
+
+  static async deleteShiftType(id: string): Promise<void> {
+    console.log(`🗑️ Deleting shift type ${id} from database...`)
+
+    await apiRequest(`/shift-patterns/${id}`, {
+      method: 'DELETE',
+    })
+
+    console.log(`✅ Successfully deleted shift type ${id} from database`)
+  }
+
+  static async getPortersByShiftType(shiftTypeId: string): Promise<Porter[]> {
+    // For now, return empty array - this would need backend implementation
+    console.log(`⚠️ getPortersByShiftType(${shiftTypeId}) not yet implemented in backend`)
+    return []
+  }
+
   // Department operations
   static async getDepartments(): Promise<Department[]> {
     const departments = await apiRequest<any[]>('/departments')
@@ -238,8 +351,7 @@ export class ApiClient {
       name: dept.name,
       display_order: 1, // Default value
       min_porters_required: dept.required_staff,
-      department_type: 'regular' as any, // Default value
-      operating_schedule: this.transformOperatingHours(dept.operating_hours),
+      operating_hours: dept.operating_hours,
       created_at: dept.created_at,
       updated_at: dept.updated_at,
       code: dept.code,
@@ -255,8 +367,7 @@ export class ApiClient {
         name: dept.name,
         display_order: 1,
         min_porters_required: dept.required_staff,
-        department_type: 'regular' as any,
-        operating_schedule: this.transformOperatingHours(dept.operating_hours),
+        operating_hours: dept.operating_hours,
         created_at: dept.created_at,
         updated_at: dept.updated_at,
         code: dept.code,
@@ -272,16 +383,32 @@ export class ApiClient {
   static async createDepartment(department: {
     name: string
     min_porters_required: number
-    operating_schedule?: any
+    operating_hours?: any
   }): Promise<Department> {
-    const code = department.name.toUpperCase().replace(/\s+/g, '_').slice(0, 10)
+    // Generate a unique code by checking existing departments
+    const existingDepartments = await this.getDepartments()
+    const existingCodes = existingDepartments.map((d) => d.code).filter(Boolean)
+
+    let baseCode = department.name.toUpperCase().replace(/\s+/g, '_').slice(0, 8)
+    let code = baseCode
+    let counter = 1
+
+    // Ensure the code is unique
+    while (existingCodes.includes(code)) {
+      code = `${baseCode}_${counter}`
+      if (code.length > 10) {
+        baseCode = baseCode.slice(0, 6)
+        code = `${baseCode}_${counter}`
+      }
+      counter++
+    }
 
     const newDept = await apiRequest<any>('/departments', {
       method: 'POST',
       body: JSON.stringify({
         name: department.name,
         code,
-        operating_hours: department.operating_schedule || {},
+        operating_hours: department.operating_hours || {},
         required_staff: department.min_porters_required,
       }),
     })
@@ -291,8 +418,7 @@ export class ApiClient {
       name: newDept.name,
       display_order: 1,
       min_porters_required: newDept.required_staff,
-      department_type: 'regular' as any,
-      operating_schedule: this.transformOperatingHours(newDept.operating_hours),
+      operating_hours: newDept.operating_hours,
       created_at: newDept.created_at,
       updated_at: newDept.updated_at,
       code: newDept.code,
@@ -305,8 +431,8 @@ export class ApiClient {
     if (updates.name !== undefined) backendUpdates.name = updates.name
     if (updates.min_porters_required !== undefined)
       backendUpdates.required_staff = updates.min_porters_required
-    if (updates.operating_schedule !== undefined)
-      backendUpdates.operating_hours = updates.operating_schedule
+    if (updates.operating_hours !== undefined)
+      backendUpdates.operating_hours = updates.operating_hours
     if (updates.code !== undefined) backendUpdates.code = updates.code
 
     await apiRequest(`/departments/${id}`, {

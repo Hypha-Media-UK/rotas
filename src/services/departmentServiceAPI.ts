@@ -33,25 +33,29 @@ export class DepartmentServiceAPI {
   }
 
   // Create new department
-  static async createDepartment(data: DepartmentFormData): Promise<Department> {
+  static async createDepartment(data: any): Promise<Department> {
     try {
       console.log(`🆕 Creating new department ${data.name} via API...`)
-      
+
       const newDepartment = {
         name: data.name,
         min_porters_required: data.min_porters_required,
-        operating_schedule: {
-          days_of_week: [1, 2, 3, 4, 5], // Default to weekdays
-          start_time: '07:00',
-          end_time: '18:00',
-          is_24_hour: false,
-          requires_shift_support: false
-        }
+        operating_hours: data.operating_hours || {
+          sunday: null,
+          monday: { start: '08:00', end: '17:00' },
+          tuesday: { start: '08:00', end: '17:00' },
+          wednesday: { start: '08:00', end: '17:00' },
+          thursday: { start: '08:00', end: '17:00' },
+          friday: { start: '08:00', end: '17:00' },
+          saturday: null,
+        },
       }
 
       const createdDepartment = await ApiClient.createDepartment(newDepartment)
-      console.log(`✅ Successfully created department ${createdDepartment.name} (ID: ${createdDepartment.id}) via API`)
-      
+      console.log(
+        `✅ Successfully created department ${createdDepartment.name} (ID: ${createdDepartment.id}) via API`,
+      )
+
       return createdDepartment
     } catch (error) {
       console.error(`❌ Error creating department ${data.name} via API:`, error)
@@ -60,14 +64,16 @@ export class DepartmentServiceAPI {
   }
 
   // Update department
-  static async updateDepartment(id: number, data: Partial<DepartmentFormData>): Promise<void> {
+  static async updateDepartment(id: number, data: any): Promise<void> {
     try {
       console.log(`📝 Updating department ${id} via API...`)
-      
+
       const updates: Partial<Department> = {}
-      
+
       if (data.name !== undefined) updates.name = data.name
-      if (data.min_porters_required !== undefined) updates.min_porters_required = data.min_porters_required
+      if (data.min_porters_required !== undefined)
+        updates.min_porters_required = data.min_porters_required
+      if (data.operating_hours !== undefined) updates.operating_hours = data.operating_hours
 
       await ApiClient.updateDepartment(id, updates)
       console.log(`✅ Successfully updated department ${id} via API`)
@@ -105,9 +111,10 @@ export class DepartmentServiceAPI {
     try {
       const allDepartments = await this.getAllDepartments()
       const lowercaseQuery = query.toLowerCase()
-      return allDepartments.filter(department => 
-        department.name.toLowerCase().includes(lowercaseQuery) ||
-        department.code?.toLowerCase().includes(lowercaseQuery)
+      return allDepartments.filter(
+        (department) =>
+          department.name.toLowerCase().includes(lowercaseQuery) ||
+          department.code?.toLowerCase().includes(lowercaseQuery),
       )
     } catch (error) {
       console.error(`❌ Error searching departments with query "${query}" from API:`, error)
@@ -123,12 +130,12 @@ export class DepartmentServiceAPI {
   }> {
     try {
       const allDepartments = await this.getAllDepartments()
-      
+
       const byType: Record<string, number> = {}
       let totalRequiredStaff = 0
-      
-      allDepartments.forEach(department => {
-        const type = department.department_type || 'regular'
+
+      allDepartments.forEach((department) => {
+        const type = 'regular' // All departments are now regular type
         byType[type] = (byType[type] || 0) + 1
         totalRequiredStaff += department.min_porters_required
       })
@@ -136,14 +143,14 @@ export class DepartmentServiceAPI {
       return {
         total: allDepartments.length,
         byType,
-        totalRequiredStaff
+        totalRequiredStaff,
       }
     } catch (error) {
       console.error('❌ Error fetching department statistics from API:', error)
       return {
         total: 0,
         byType: {},
-        totalRequiredStaff: 0
+        totalRequiredStaff: 0,
       }
     }
   }
@@ -154,7 +161,7 @@ export class DepartmentServiceAPI {
       const allDepartments = await this.getAllDepartments()
       // This would need assignment data to determine actual staffing levels
       // For now, return all departments as potentially needing staff
-      return allDepartments.filter(dept => dept.min_porters_required > 0)
+      return allDepartments.filter((dept) => dept.min_porters_required > 0)
     } catch (error) {
       console.error('❌ Error fetching departments needing staff from API:', error)
       return []

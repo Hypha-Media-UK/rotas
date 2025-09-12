@@ -35,6 +35,25 @@
               <strong>Department:</strong>
               {{ getPorterDepartmentName(porter.id) || 'Not assigned' }}
             </span>
+            <div class="detail-item shift-assignment">
+              <strong>Shift:</strong>
+              <select
+                :value="getPorterShiftTypeId(porter.id)"
+                @change="updatePorterShiftAllocation(porter.id, $event.target.value)"
+                :disabled="updatingPorterId === porter.id"
+                class="shift-select"
+                :class="{ updating: updatingPorterId === porter.id }"
+              >
+                <option value="">No Shift Assignment</option>
+                <option
+                  v-for="shiftType in activeShiftTypes"
+                  :key="shiftType.id"
+                  :value="shiftType.id"
+                >
+                  {{ shiftType.name }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
         <div class="porter-actions">
@@ -88,50 +107,69 @@ import PorterForm from '@/components/PorterForm.vue'
 import { useModal } from '@/composables/useModal'
 import { usePorters } from '@/composables/usePorters'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
-import type { PorterType, PorterFormData, Porter } from '@/types'
+import { ShiftManagementService } from '@/services/shiftManagementService'
+import type { PorterType, PorterFormData, Porter, ShiftType } from '@/types'
 
-type StaffCategory = 'Day Shift' | 'Night Shift' | 'PTS' | 'Departmental' | 'Relief' | 'Supervisors'
+type StaffCategory =
+  | 'Not Allocated'
+  | 'Day Shift'
+  | 'Night Shift'
+  | 'PTS'
+  | 'Departmental'
+  | 'Relief'
+  | 'Supervisors'
 
-const activeTab = ref<StaffCategory>('Day Shift')
+const activeTab = ref<StaffCategory>('Not Allocated')
 const editingPorter = ref<Porter | null>(null)
 const searchQuery = ref('')
+const shiftTypes = ref<ShiftType[]>([])
+const updatingPorterId = ref<number | null>(null)
 
 // Use composables
 const addModal = useModal()
 const editModal = useModal()
-const { porters, getPortersByType, createPorter, updatePorter, deletePorter } = usePorters()
+const { porters, getPortersByType, createPorter, updatePorter, deletePorter, loadPorters } =
+  usePorters()
 
 // Filter porters by staff category
 const getPortersByCategory = (category: StaffCategory) => {
   return computed(() => {
     return porters.value.filter((porter) => {
+      if (!porter.is_active) return false
+
       switch (category) {
+        case 'Not Allocated':
+          // Show porters with no shift assignment
+          return !porter.shift_group
         case 'Day Shift':
-          return porter.shift_group?.includes('Day Shift') && porter.is_active
+          return porter.shift_group?.includes('Day Shift')
         case 'Night Shift':
-          return porter.shift_group?.includes('Night Shift') && porter.is_active
+          return porter.shift_group?.includes('Night Shift')
         case 'PTS':
           // PTS porters have PTS A/B shift groups or PTS in their name
           return (
-            (porter.shift_group?.includes('PTS') ||
-              porter.name?.toLowerCase().includes('pts') ||
-              porter.contracted_hours?.includes('PTS')) &&
-            porter.is_active
+            porter.shift_group?.includes('PTS') ||
+            porter.name?.toLowerCase().includes('pts') ||
+            porter.contracted_hours?.includes('PTS')
           )
         case 'Departmental':
-          // Porters who are Regular type and either:
-          // 1. Have no shift group (legacy departmental porters)
-          // 2. Have 'Departmental' shift group (new explicit assignment)
-          // Exclude PTS porters
-          return (
-            porter.type === 'Regular' &&
-            (porter.shift_group === 'Departmental' ||
-              (!porter.shift_group && !porter.name?.toLowerCase().includes('pts'))) &&
-            porter.is_active
-          )
+          // Porters who have shift assignments that are not Day/Night/PTS
+          // Include Regular type, null type, and actual role types from database
+          const isDepartmental =
+            (porter.type === 'Regular' ||
+              porter.type === null ||
+              porter.type === 'Day Shift One' ||
+              porter.type === 'Day Shift Two' ||
+              porter.type?.includes('Day Shift')) &&
+            porter.shift_group &&
+            !porter.shift_group.includes('Day Shift') &&
+            !porter.shift_group.includes('Night Shift') &&
+            !porter.shift_group.includes('PTS')
+
+          return isDepartmental
         case 'Relief':
           // Relief should only be Relief type porters (not shift group)
-          const isRelief = porter.type === 'Relief' && porter.is_active
+          const isRelief = porter.type === 'Relief'
           if (isRelief) {
             console.log(
               `🔍 Relief porter found: ${porter.name} (type: ${porter.type}, shift_group: ${porter.shift_group})`,
@@ -139,7 +177,7 @@ const getPortersByCategory = (category: StaffCategory) => {
           }
           return isRelief
         case 'Supervisors':
-          return porter.type === 'Supervisor' && porter.is_active
+          return porter.type === 'Supervisor'
         default:
           return false
       }
@@ -148,6 +186,11 @@ const getPortersByCategory = (category: StaffCategory) => {
 }
 
 const staffTabs = computed(() => [
+  {
+    key: 'Not Allocated',
+    label: 'Not Allocated',
+    count: getPortersByCategory('Not Allocated').value.length,
+  },
   {
     key: 'Day Shift',
     label: 'Day Shift',
@@ -201,6 +244,7 @@ const currentPorters = computed(() => {
 // Get the appropriate porter type for the current category
 const getPorterTypeForCategory = (category: StaffCategory): PorterType => {
   switch (category) {
+    case 'Not Allocated':
     case 'Day Shift':
     case 'Night Shift':
     case 'PTS':
@@ -218,6 +262,8 @@ const getPorterTypeForCategory = (category: StaffCategory): PorterType => {
 // Get descriptive text for empty state
 const getEmptyStateDescription = (category: StaffCategory): string => {
   switch (category) {
+    case 'Not Allocated':
+      return 'Staff members who have not been assigned to a specific shift. Use the shift dropdown in each porter card to assign them to a shift.'
     case 'Day Shift':
       return 'Add porters who work the 4-on/4-off day shift rotation (07:00-19:00).'
     case 'Night Shift':
@@ -382,6 +428,69 @@ const getPorterDepartmentName = (porterId: number): string | null => {
   // return department?.name || null
   return null // Temporary until assignments are implemented
 }
+
+// Shift Management Functions
+const loadShiftTypes = async () => {
+  try {
+    shiftTypes.value = await ShiftManagementService.getAllShiftTypes()
+    console.log(`📋 Loaded ${shiftTypes.value.length} shift types for staff assignments`)
+  } catch (error) {
+    console.error('Failed to load shift types:', error)
+  }
+}
+
+const activeShiftTypes = computed(() => {
+  const active = shiftTypes.value.filter((st) => st.is_active === true || st.is_active === 1)
+  console.log(
+    `🎯 Active shift types for dropdown: ${active.length}`,
+    active.map((st) => st.name),
+  )
+  return active
+})
+
+const getPorterShiftTypeId = (porterId: number): string => {
+  const porter = porters.value.find((p) => p.id === porterId)
+  if (!porter || !porter.shift_group) {
+    return ''
+  }
+
+  // Map the porter's shift_group to a shift type ID
+  const shiftType = shiftTypes.value.find(
+    (st) => st.name === porter.shift_group || st.id === porter.shift_group,
+  )
+
+  return shiftType ? shiftType.id : ''
+}
+
+const updatePorterShiftAllocation = async (porterId: number, shiftTypeId: string) => {
+  try {
+    updatingPorterId.value = porterId
+    console.log(`🔄 Updating porter ${porterId} shift allocation to: ${shiftTypeId}`)
+
+    if (shiftTypeId === '') {
+      // Remove shift assignment
+      await ShiftManagementService.removePorterFromShiftType(porterId)
+      console.log(`✅ Removed porter ${porterId} from shift assignment`)
+    } else {
+      // Assign to new shift type
+      await ShiftManagementService.assignPorterToShiftType(porterId, shiftTypeId)
+      const shiftType = shiftTypes.value.find((st) => st.id === shiftTypeId)
+      console.log(`✅ Assigned porter ${porterId} to shift: ${shiftType?.name}`)
+    }
+
+    // Force refresh of porter data from the composable
+    // This will trigger a re-fetch from the API
+    await loadPorters()
+  } catch (error) {
+    console.error('Failed to update porter shift allocation:', error)
+    alert('Failed to update shift allocation. Please try again.')
+  } finally {
+    updatingPorterId.value = null
+  }
+}
+
+// Load shift types on component mount
+loadShiftTypes()
 </script>
 
 <style scoped>
@@ -498,6 +607,39 @@ const getPorterDepartmentName = (porterId: number): string | null => {
 .detail-item {
   font-size: 0.875rem;
   color: var(--color-text-muted);
+}
+
+.shift-assignment {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.shift-select {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  font-size: 0.875rem;
+  background: white;
+  min-width: 150px;
+  transition: all 0.2s ease;
+}
+
+.shift-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.shift-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--color-gray-50);
+}
+
+.shift-select.updating {
+  border-color: var(--color-primary);
+  background: var(--color-background);
 }
 
 .porter-actions {

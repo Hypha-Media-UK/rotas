@@ -5,13 +5,12 @@ export interface Department {
   name: string
   display_order: number
   min_porters_required: number
-  department_type: DepartmentType
-  operating_schedule: OperatingSchedule
+  operating_hours: {
+    [key: string]: { start: string; end: string } | null
+  }
   created_at: string
   updated_at: string
-  // Additional fields to match MySQL schema
   code?: string
-  operating_hours?: any // JSON field from MySQL
 }
 
 // MySQL-specific Department interface
@@ -24,21 +23,6 @@ export interface MySQLDepartment {
   is_active: boolean
   created_at: string
   updated_at: string
-}
-
-export type DepartmentType =
-  | 'shift_rotation' // Day/Night Shift A/B, PTS A/B - 4-on/4-off system
-  | 'relief' // Relief - available for coverage
-  | 'emergency_24h' // A&E - 24/7 + additional Day/Night shift support
-  | 'standard_hours' // Most departments - specific days/hours
-  | 'on_demand' // Ad-Hoc, Training - as needed
-
-export interface OperatingSchedule {
-  days_of_week: number[] // 0=Sunday, 1=Monday, etc. Empty array = all days
-  start_time: string // "07:00" format
-  end_time: string // "18:00" format
-  is_24_hour: boolean // true for 24-hour operations
-  requires_shift_support: boolean // true if A&E needs additional Day/Night shift porters
 }
 
 export interface Porter {
@@ -133,6 +117,33 @@ export interface MySQLShiftPattern {
   updated_at: string
 }
 
+// Shift Type interface for the new shift management system
+export interface ShiftType {
+  id: string
+  name: string
+  description?: string
+  start_time: string
+  end_time: string
+  rotation_type: 'fixed' | 'alternating' | 'rotating'
+  rotation_days: number
+  offset_days: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// Form data for creating/editing shift types
+export interface ShiftTypeFormData {
+  name: string
+  description?: string
+  start_time: string
+  end_time: string
+  rotation_type: 'fixed' | 'alternating' | 'rotating'
+  rotation_days: number
+  offset_days: number
+  is_active: boolean
+}
+
 // MySQL-specific Assignment interface
 export interface MySQLAssignment {
   id: number
@@ -183,13 +194,6 @@ export interface PorterFormData {
     start_date?: string
     end_date?: string
   }[]
-}
-
-export interface DepartmentFormData {
-  name: string
-  min_porters_required: number
-  department_type: DepartmentType
-  operating_schedule: OperatingSchedule
 }
 
 // Utility types
