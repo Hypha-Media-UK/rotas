@@ -25,39 +25,69 @@
     <!-- Contracted Hours Section -->
     <div class="contracted-hours-section">
       <h4>Contracted Hours</h4>
-      <p class="section-hint">Set the porter's working hours for each day of the week</p>
+      <p class="section-hint">Set the porter's working schedule</p>
 
-      <div class="days-grid">
-        <div v-for="day in daysOfWeek" :key="day" class="day-row">
-          <div class="day-header">
-            <label class="day-checkbox">
-              <input
-                type="checkbox"
-                :checked="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
-                @change="toggleDay(day.toLowerCase())"
-              />
-              <span class="day-name">{{ day }}</span>
-            </label>
-          </div>
-          <div
-            v-if="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
-            class="day-times"
-          >
-            <div class="time-input-group">
-              <label>Start</label>
-              <input
-                v-model="form.contracted_hours[day.toLowerCase()].start"
-                type="time"
-                class="form-input time-input"
-              />
+      <!-- Hours Type Selection -->
+      <div class="hours-type-selection">
+        <label class="hours-type-option">
+          <input
+            type="radio"
+            name="hoursType"
+            value="all-days"
+            :checked="hoursType === 'all-days'"
+            @change="setHoursType('all-days')"
+          />
+          <span class="option-label">All Days (08:00 - 20:00)</span>
+          <span class="option-hint">Standard hours for all working days</span>
+        </label>
+
+        <label class="hours-type-option">
+          <input
+            type="radio"
+            name="hoursType"
+            value="custom"
+            :checked="hoursType === 'custom'"
+            @change="setHoursType('custom')"
+          />
+          <span class="option-label">Custom Hours</span>
+          <span class="option-hint">Set different hours for each day</span>
+        </label>
+      </div>
+
+      <!-- Custom Hours Configuration (only shown when custom is selected) -->
+      <div v-if="hoursType === 'custom'" class="custom-hours-config">
+        <div class="days-grid">
+          <div v-for="day in daysOfWeek" :key="day" class="day-row">
+            <div class="day-header">
+              <label class="day-checkbox">
+                <input
+                  type="checkbox"
+                  :checked="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
+                  @change="toggleDay(day.toLowerCase())"
+                />
+                <span class="day-name">{{ day }}</span>
+              </label>
             </div>
-            <div class="time-input-group">
-              <label>End</label>
-              <input
-                v-model="form.contracted_hours[day.toLowerCase()].end"
-                type="time"
-                class="form-input time-input"
-              />
+            <div
+              v-if="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
+              class="day-times"
+            >
+              <div class="time-input-group">
+                <label>Start</label>
+                <input
+                  v-model="form.contracted_hours[day.toLowerCase()].start"
+                  type="time"
+                  class="form-input time-input"
+                />
+              </div>
+              <div class="time-input-group">
+                <label>End</label>
+                <input
+                  v-model="form.contracted_hours[day.toLowerCase()].end"
+                  type="time"
+                  class="form-input time-input"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -133,10 +163,34 @@ const form = ref<PorterFormData>({
 // Add assigned_department_id for the form
 const assignedDepartmentId = ref<number | undefined>(undefined)
 
+// Hours type selection (all-days or custom)
+const hoursType = ref<'all-days' | 'custom'>('all-days')
+
 // Days of the week for contracted hours
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-// Toggle day function for contracted hours
+// Set hours type and configure accordingly
+const setHoursType = (type: 'all-days' | 'custom') => {
+  hoursType.value = type
+
+  if (type === 'all-days') {
+    // Set all weekdays to 08:00-20:00
+    form.value.contracted_hours = {
+      monday: { start: '08:00', end: '20:00' },
+      tuesday: { start: '08:00', end: '20:00' },
+      wednesday: { start: '08:00', end: '20:00' },
+      thursday: { start: '08:00', end: '20:00' },
+      friday: { start: '08:00', end: '20:00' },
+      saturday: { start: '08:00', end: '20:00' },
+      sunday: { start: '08:00', end: '20:00' },
+    }
+  } else {
+    // Clear all hours for custom configuration
+    form.value.contracted_hours = {}
+  }
+}
+
+// Toggle day function for contracted hours (used in custom mode)
 const toggleDay = (day: string) => {
   if (!form.value.contracted_hours) {
     form.value.contracted_hours = {}
@@ -222,7 +276,63 @@ watch(
   (newData) => {
     if (newData) {
       console.log(`📝 PorterForm initializing with data for: ${newData.name}`)
-      Object.assign(form.value, newData)
+
+      // Handle contracted_hours conversion and hours type detection
+      const convertedData = { ...newData }
+
+      if (typeof newData.contracted_hours === 'string' && newData.contracted_hours) {
+        // Convert old format "0800-2000" to new format and set as all-days
+        const [start, end] = newData.contracted_hours.split('-')
+        if (start && end) {
+          const startTime = `${start.slice(0, 2)}:${start.slice(2)}`
+          const endTime = `${end.slice(0, 2)}:${end.slice(2)}`
+          convertedData.contracted_hours = {
+            monday: { start: startTime, end: endTime },
+            tuesday: { start: startTime, end: endTime },
+            wednesday: { start: startTime, end: endTime },
+            thursday: { start: startTime, end: endTime },
+            friday: { start: startTime, end: endTime },
+            saturday: { start: startTime, end: endTime },
+            sunday: { start: startTime, end: endTime },
+          }
+          hoursType.value = 'all-days'
+        }
+      } else if (newData.contracted_hours && typeof newData.contracted_hours === 'object') {
+        // Detect if it's all-days (all 7 days with same hours) or custom
+        const hours = newData.contracted_hours
+        const dayKeys = Object.keys(hours)
+
+        if (dayKeys.length === 7) {
+          // Check if all days have the same hours
+          const firstDay = hours[dayKeys[0]]
+          const allSame = dayKeys.every(
+            (day) =>
+              hours[day] && hours[day].start === firstDay.start && hours[day].end === firstDay.end,
+          )
+
+          if (allSame && firstDay.start === '08:00' && firstDay.end === '20:00') {
+            hoursType.value = 'all-days'
+          } else {
+            hoursType.value = 'custom'
+          }
+        } else {
+          hoursType.value = 'custom'
+        }
+      } else {
+        // No contracted hours - set default to all-days
+        convertedData.contracted_hours = {
+          monday: { start: '08:00', end: '20:00' },
+          tuesday: { start: '08:00', end: '20:00' },
+          wednesday: { start: '08:00', end: '20:00' },
+          thursday: { start: '08:00', end: '20:00' },
+          friday: { start: '08:00', end: '20:00' },
+          saturday: { start: '08:00', end: '20:00' },
+          sunday: { start: '08:00', end: '20:00' },
+        }
+        hoursType.value = 'all-days'
+      }
+
+      Object.assign(form.value, convertedData)
 
       // Set assigned department if porter has department assignments
       if (newData.department_assignments && newData.department_assignments.length > 0) {
@@ -232,6 +342,9 @@ watch(
         assignedDepartmentId.value = undefined
         console.log(`📝 PorterForm: No department assignments found`)
       }
+    } else {
+      // New porter - initialize with all-days default
+      setHoursType('all-days')
     }
   },
   { immediate: true },
@@ -349,6 +462,60 @@ const handleSubmit = () => {
   margin: 0 0 var(--spacing-md) 0;
   color: var(--color-text-secondary);
   font-size: 0.875rem;
+}
+
+/* Hours Type Selection */
+.hours-type-selection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.hours-type-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 2px solid var(--color-border);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hours-type-option:hover {
+  border-color: var(--color-primary-light);
+  background-color: var(--color-background-secondary);
+}
+
+.hours-type-option:has(input:checked) {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light);
+}
+
+.hours-type-option input[type='radio'] {
+  margin: 0;
+  margin-top: 2px;
+}
+
+.option-label {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  display: block;
+  margin-bottom: var(--spacing-xs);
+}
+
+.option-hint {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  display: block;
+}
+
+/* Custom Hours Configuration */
+.custom-hours-config {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
 }
 
 .days-grid {
