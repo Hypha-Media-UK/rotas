@@ -22,14 +22,47 @@
       :error="errors.assigned_department_id"
     />
 
-    <FormField
-      v-model="form.contracted_hours"
-      label="Contracted Hours"
-      type="text"
-      placeholder="e.g., 0800-2000"
-      hint="Format: HHMM-HHMM (e.g., 0800-2000 for 8am to 8pm)"
-      :error="errors.contracted_hours"
-    />
+    <!-- Contracted Hours Section -->
+    <div class="contracted-hours-section">
+      <h4>Contracted Hours</h4>
+      <p class="section-hint">Set the porter's working hours for each day of the week</p>
+
+      <div class="days-grid">
+        <div v-for="day in daysOfWeek" :key="day" class="day-row">
+          <div class="day-header">
+            <label class="day-checkbox">
+              <input
+                type="checkbox"
+                :checked="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
+                @change="toggleDay(day.toLowerCase())"
+              />
+              <span class="day-name">{{ day }}</span>
+            </label>
+          </div>
+          <div
+            v-if="form.contracted_hours && form.contracted_hours[day.toLowerCase()]"
+            class="day-times"
+          >
+            <div class="time-input-group">
+              <label>Start</label>
+              <input
+                v-model="form.contracted_hours[day.toLowerCase()].start"
+                type="time"
+                class="form-input time-input"
+              />
+            </div>
+            <div class="time-input-group">
+              <label>End</label>
+              <input
+                v-model="form.contracted_hours[day.toLowerCase()].end"
+                type="time"
+                class="form-input time-input"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <FormField
       v-model="form.break_duration_minutes"
@@ -91,7 +124,7 @@ const emit = defineEmits<Emits>()
 const form = ref<PorterFormData>({
   name: '',
   type: 'Regular',
-  contracted_hours: '',
+  contracted_hours: {},
   break_duration_minutes: 60,
   shift_group: undefined,
   department_assignments: [],
@@ -99,6 +132,25 @@ const form = ref<PorterFormData>({
 
 // Add assigned_department_id for the form
 const assignedDepartmentId = ref<number | undefined>(undefined)
+
+// Days of the week for contracted hours
+const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+// Toggle day function for contracted hours
+const toggleDay = (day: string) => {
+  if (!form.value.contracted_hours) {
+    form.value.contracted_hours = {}
+  }
+
+  if (form.value.contracted_hours[day]) {
+    delete form.value.contracted_hours[day]
+  } else {
+    form.value.contracted_hours[day] = {
+      start: '08:00',
+      end: '17:00',
+    }
+  }
+}
 
 const errors = ref({
   name: '',
@@ -277,5 +329,85 @@ const handleSubmit = () => {
   .form-actions {
     flex-direction: column;
   }
+}
+
+/* Contracted Hours Section */
+.contracted-hours-section {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.contracted-hours-section h4 {
+  margin: 0 0 var(--spacing-xs) 0;
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.section-hint {
+  margin: 0 0 var(--spacing-md) 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.days-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.day-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.day-header {
+  display: flex;
+  align-items: center;
+}
+
+.day-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.day-checkbox input[type='checkbox'] {
+  margin: 0;
+}
+
+.day-name {
+  min-width: 80px;
+  color: var(--color-text-primary);
+}
+
+.day-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+  margin-left: var(--spacing-lg);
+  padding-left: var(--spacing-md);
+  border-left: 2px solid var(--color-border);
+}
+
+.time-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.time-input-group label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.time-input {
+  width: 120px;
+  min-width: 120px;
 }
 </style>

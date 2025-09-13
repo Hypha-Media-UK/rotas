@@ -29,7 +29,7 @@ export interface Porter {
   id: number
   name: string
   type: PorterType
-  contracted_hours?: string // e.g., "0800-2000"
+  contracted_hours?: Record<string, { start: string; end: string }> // Day-by-day hours like departments
   break_duration_minutes: number
   shift_group?: string
   is_active: boolean
@@ -187,7 +187,7 @@ export interface DepartmentTableRow {
 export interface PorterFormData {
   name: string
   type: PorterType
-  contracted_hours?: string
+  contracted_hours?: Record<string, { start: string; end: string }>
   break_duration_minutes: number
   shift_group?: string
   department_assignments: {
