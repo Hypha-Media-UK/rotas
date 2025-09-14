@@ -38,7 +38,19 @@
             @change="setHoursType('all-days')"
           />
           <span class="option-label">All Days (08:00 - 20:00)</span>
-          <span class="option-hint">Standard hours for all working days</span>
+          <span class="option-hint">Standard day hours for all working days</span>
+        </label>
+
+        <label class="hours-type-option">
+          <input
+            type="radio"
+            name="hoursType"
+            value="all-nights"
+            :checked="hoursType === 'all-nights'"
+            @change="setHoursType('all-nights')"
+          />
+          <span class="option-label">All Nights (20:00 - 08:00)</span>
+          <span class="option-hint">Standard night hours for all working days</span>
         </label>
 
         <label class="hours-type-option">
@@ -131,7 +143,6 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import BaseForm from './BaseForm.vue'
 import FormField from './FormField.vue'
-import { useFormValidation } from '@/composables/useFormValidation'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
 import type { PorterFormData, PorterType, Department } from '@/types'
 
@@ -163,14 +174,14 @@ const form = ref<PorterFormData>({
 // Add assigned_department_id for the form
 const assignedDepartmentId = ref<number | undefined>(undefined)
 
-// Hours type selection (all-days or custom)
-const hoursType = ref<'all-days' | 'custom'>('all-days')
+// Hours type selection (all-days, all-nights, or custom)
+const hoursType = ref<'all-days' | 'all-nights' | 'custom'>('all-days')
 
 // Days of the week for contracted hours
 const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 // Set hours type and configure accordingly
-const setHoursType = (type: 'all-days' | 'custom') => {
+const setHoursType = (type: 'all-days' | 'all-nights' | 'custom') => {
   hoursType.value = type
 
   if (type === 'all-days') {
@@ -183,6 +194,17 @@ const setHoursType = (type: 'all-days' | 'custom') => {
       friday: { start: '08:00', end: '20:00' },
       saturday: { start: '08:00', end: '20:00' },
       sunday: { start: '08:00', end: '20:00' },
+    }
+  } else if (type === 'all-nights') {
+    // Set all weekdays to 20:00-08:00
+    form.value.contracted_hours = {
+      monday: { start: '20:00', end: '08:00' },
+      tuesday: { start: '20:00', end: '08:00' },
+      wednesday: { start: '20:00', end: '08:00' },
+      thursday: { start: '20:00', end: '08:00' },
+      friday: { start: '20:00', end: '08:00' },
+      saturday: { start: '20:00', end: '08:00' },
+      sunday: { start: '20:00', end: '08:00' },
     }
   } else {
     // Clear all hours for custom configuration
@@ -224,8 +246,6 @@ const departmentOptions = computed(() => [
     label: dept.name,
   })),
 ])
-
-const { validateAll, isFormValid } = useFormValidation()
 
 const porterTypeOptions = [
   { value: 'Regular', label: 'Regular' },
@@ -312,6 +332,8 @@ watch(
 
           if (allSame && firstDay.start === '08:00' && firstDay.end === '20:00') {
             hoursType.value = 'all-days'
+          } else if (allSame && firstDay.start === '20:00' && firstDay.end === '08:00') {
+            hoursType.value = 'all-nights'
           } else {
             hoursType.value = 'custom'
           }
@@ -345,6 +367,8 @@ watch(
     } else {
       // New porter - initialize with all-days default
       setHoursType('all-days')
+      assignedDepartmentId.value = undefined
+      console.log(`📝 PorterForm: Reset for new porter`)
     }
   },
   { immediate: true },
@@ -357,6 +381,14 @@ watch(
     if (newType === 'Supervisor') {
       form.value.shift_group = undefined
     }
+  },
+)
+
+// Debug watch for assigned department ID
+watch(
+  () => assignedDepartmentId.value,
+  (newValue, oldValue) => {
+    console.log(`📝 PorterForm: assignedDepartmentId changed from ${oldValue} to ${newValue}`)
   },
 )
 
@@ -380,12 +412,18 @@ const validateForm = (): boolean => {
     isValid = false
   }
 
-  // Contracted hours validation
-  if (form.value.contracted_hours) {
-    const timePattern = /^\d{4}-\d{4}$/
-    if (!timePattern.test(form.value.contracted_hours)) {
-      errors.value.contracted_hours = 'Invalid format. Use HHMM-HHMM (e.g., 0800-2000)'
-      isValid = false
+  // Contracted hours validation - now handles object format
+  if (form.value.contracted_hours && typeof form.value.contracted_hours === 'object') {
+    // Validate that each day has valid time format
+    for (const [day, schedule] of Object.entries(form.value.contracted_hours)) {
+      if (schedule && typeof schedule === 'object' && 'start' in schedule && 'end' in schedule) {
+        const timePattern = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/
+        if (!timePattern.test(schedule.start) || !timePattern.test(schedule.end)) {
+          errors.value.contracted_hours = 'Invalid time format. Use HH:MM format (e.g., 08:00)'
+          isValid = false
+          break
+        }
+      }
     }
   }
 
@@ -400,6 +438,30 @@ const validateForm = (): boolean => {
 
   return isValid
 }
+
+// Computed property for form validity
+const isFormValid = computed(() => {
+  // Check required fields
+  if (!form.value.name?.trim()) return false
+  if (!form.value.type) return false
+
+  // Check break duration is valid
+  if (form.value.break_duration_minutes < 0 || form.value.break_duration_minutes > 120) return false
+
+  // Check contracted hours format if present
+  if (form.value.contracted_hours && typeof form.value.contracted_hours === 'object') {
+    const timePattern = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/
+    for (const [day, schedule] of Object.entries(form.value.contracted_hours)) {
+      if (schedule && typeof schedule === 'object' && 'start' in schedule && 'end' in schedule) {
+        if (!timePattern.test(schedule.start) || !timePattern.test(schedule.end)) {
+          return false
+        }
+      }
+    }
+  }
+
+  return true
+})
 
 const handleSubmit = () => {
   if (validateForm()) {

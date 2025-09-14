@@ -29,7 +29,7 @@
           <h3>{{ porter.name }}</h3>
           <div class="porter-details">
             <span class="detail-item">
-              <strong>Hours:</strong> {{ porter.contracted_hours || 'Not set' }}
+              <strong>Hours:</strong> {{ formatContractedHours(porter.contracted_hours) }}
             </span>
             <span class="detail-item">
               <strong>Department:</strong>
@@ -109,6 +109,7 @@ import { usePorters } from '@/composables/usePorters'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
 import { ShiftManagementService } from '@/services/shiftManagementService'
 import { ApiClient } from '@/services/apiClient'
+import { formatContractedHours } from '@/utils/porterUtils'
 import type { PorterType, PorterFormData, Porter, ShiftType } from '@/types'
 
 type StaffCategory =
@@ -334,20 +335,31 @@ const handleAddPorter = async (data: PorterFormData & { assigned_department_id?:
 }
 
 const handleEditPorter = async (porter: Porter) => {
-  // Get department assignments for this porter
-  const assignments = await DepartmentServiceAPI.getPorterAssignments(porter.id)
+  try {
+    // Always fetch fresh assignment data
+    console.log(`📝 Fetching fresh assignments for porter ${porter.name} (ID: ${porter.id})`)
+    const assignments = await DepartmentServiceAPI.getPorterAssignments(porter.id)
 
-  // Create enhanced porter data with department assignments
-  const porterWithAssignments = {
-    ...porter,
-    department_assignments: assignments,
+    // Create enhanced porter data with department assignments
+    const porterWithAssignments = {
+      ...porter,
+      department_assignments: assignments,
+    }
+
+    console.log(
+      `📝 Editing porter ${porter.name} (ID: ${porter.id}) with assignments:`,
+      assignments,
+    )
+    console.log(`📝 Porter data being passed to form:`, porterWithAssignments)
+
+    editingPorter.value = porterWithAssignments
+    editModal.open()
+  } catch (error) {
+    console.error('Failed to load porter assignments:', error)
+    // Still allow editing even if assignments fail to load
+    editingPorter.value = { ...porter, department_assignments: [] }
+    editModal.open()
   }
-
-  console.log(`📝 Editing porter ${porter.name} (ID: ${porter.id}) with assignments:`, assignments)
-  console.log(`📝 Porter data being passed to form:`, porterWithAssignments)
-
-  editingPorter.value = porterWithAssignments
-  editModal.open()
 }
 
 const handleUpdatePorter = async (data: PorterFormData & { assigned_department_id?: number }) => {
@@ -408,8 +420,9 @@ const handleUpdatePorter = async (data: PorterFormData & { assigned_department_i
 
     editModal.close()
     editingPorter.value = null
-    // Reload assignments to reflect changes
+    // Reload data to reflect changes
     await loadAssignments()
+    await loadPorters() // Reload porters to get updated data
   } catch (error) {
     console.error('Failed to update porter:', error)
   }

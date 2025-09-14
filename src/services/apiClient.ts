@@ -103,6 +103,36 @@ export class ApiClient {
       requires_shift_support: false, // Default value
     }
   }
+  // Helper function to get default contracted hours based on role
+  private static getDefaultContractedHours(
+    role: string,
+  ): Record<string, { start: string; end: string }> {
+    // Determine hours based on role
+    if (role.toLowerCase().includes('night')) {
+      // Night shift: 20:00 - 08:00
+      return {
+        monday: { start: '20:00', end: '08:00' },
+        tuesday: { start: '20:00', end: '08:00' },
+        wednesday: { start: '20:00', end: '08:00' },
+        thursday: { start: '20:00', end: '08:00' },
+        friday: { start: '20:00', end: '08:00' },
+        saturday: { start: '20:00', end: '08:00' },
+        sunday: { start: '20:00', end: '08:00' },
+      }
+    } else {
+      // Day shift: 08:00 - 20:00 (default for all other roles)
+      return {
+        monday: { start: '08:00', end: '20:00' },
+        tuesday: { start: '08:00', end: '20:00' },
+        wednesday: { start: '08:00', end: '20:00' },
+        thursday: { start: '08:00', end: '20:00' },
+        friday: { start: '08:00', end: '20:00' },
+        saturday: { start: '08:00', end: '20:00' },
+        sunday: { start: '08:00', end: '20:00' },
+      }
+    }
+  }
+
   // Porter operations
   static async getPorters(): Promise<Porter[]> {
     const porters = await apiRequest<any[]>('/porters')
@@ -112,7 +142,7 @@ export class ApiClient {
       id: porter.id,
       name: porter.name,
       type: porter.role as any, // Map role to type
-      contracted_hours: undefined, // Not in backend yet
+      contracted_hours: this.getDefaultContractedHours(porter.role), // Generate default hours based on role
       break_duration_minutes: 30, // Default value
       shift_group: porter.shift_group || undefined, // Use actual shift_group from database
       is_active: Boolean(porter.is_active),
@@ -133,7 +163,7 @@ export class ApiClient {
         id: porter.id,
         name: porter.name,
         type: porter.role as any,
-        contracted_hours: undefined,
+        contracted_hours: this.getDefaultContractedHours(porter.role), // Generate default hours based on role
         break_duration_minutes: 30,
         shift_group: porter.role.includes('Day')
           ? 'Day Shift'
