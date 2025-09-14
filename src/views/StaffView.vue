@@ -110,6 +110,8 @@ import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
 import { ShiftManagementService } from '@/services/shiftManagementService'
 import { ApiClient } from '@/services/apiClient'
 import { formatContractedHours } from '@/utils/porterUtils'
+import { invalidateCache } from '@/utils/cache'
+import { getMostRecentAssignmentsByPorter } from '@/utils/assignmentUtils'
 import type { PorterType, PorterFormData, Porter, ShiftType } from '@/types'
 
 type StaffCategory =
@@ -151,11 +153,7 @@ const getPortersByCategory = (category: StaffCategory) => {
           return porter.shift_group?.includes('Night Shift')
         case 'PTS':
           // PTS porters have PTS A/B shift groups or PTS in their name
-          return (
-            porter.shift_group?.includes('PTS') ||
-            porter.name?.toLowerCase().includes('pts') ||
-            porter.contracted_hours?.includes('PTS')
-          )
+          return porter.shift_group?.includes('PTS') || porter.name?.toLowerCase().includes('pts')
         case 'Departmental':
           // Porters who have shift assignments that are not Day/Night/PTS
           // Include Regular type, null type, and actual role types from database
@@ -236,7 +234,6 @@ const currentPorters = computed(() => {
     porters = porters.filter(
       (porter) =>
         porter.name?.toLowerCase().includes(query) ||
-        porter.contracted_hours?.toLowerCase().includes(query) ||
         porter.type?.toLowerCase().includes(query) ||
         getPorterDepartmentName(porter.id)?.toLowerCase().includes(query),
     )
@@ -336,8 +333,12 @@ const handleAddPorter = async (data: PorterFormData & { assigned_department_id?:
 
 const handleEditPorter = async (porter: Porter) => {
   try {
-    // Always fetch fresh assignment data
-    console.log(`📝 Fetching fresh assignments for porter ${porter.name} (ID: ${porter.id})`)
+    // Force fresh assignment data by clearing cache first
+    console.log(
+      `📝 Clearing assignment cache and fetching fresh data for porter ${porter.name} (ID: ${porter.id})`,
+    )
+    invalidateCache.assignments()
+
     const assignments = await DepartmentServiceAPI.getPorterAssignments(porter.id)
 
     // Create enhanced porter data with department assignments
@@ -380,41 +381,57 @@ const handleUpdatePorter = async (data: PorterFormData & { assigned_department_i
       console.log(`🎯 New department ID: ${assigned_department_id}`)
 
       // Remove existing assignments for this porter
-      // TODO: Implement getPorterAssignments in API
-      const existingAssignments = [] // DepartmentServiceAPI.getPorterAssignments(editingPorter.value.id)
+      const existingAssignments = await DepartmentServiceAPI.getPorterAssignments(
+        editingPorter.value.id,
+      )
       console.log(
         `🔍 Found ${existingAssignments.length} existing assignments:`,
         existingAssignments,
       )
 
-      for (const assignment of existingAssignments) {
-        console.log(`🗑️ Removing assignment from department ${assignment.department_id}`)
-        // TODO: Implement removePorterFromDepartment in API
-        // await DepartmentServiceAPI.removePorterFromDepartment(editingPorter.value.id, assignment.department_id)
-      }
+      // NOTE: Backend API doesn't support updating/deleting assignments
+      // So we can't remove existing assignments, only create new ones
+      console.log(
+        `ℹ️ Backend doesn't support assignment updates - skipping removal of ${existingAssignments.length} existing assignments`,
+      )
+      console.log(
+        `ℹ️ Existing assignments:`,
+        existingAssignments.map((a) => `${a.id} (dept: ${a.department_id})`).join(', '),
+      )
 
-      // Add new assignment if department is selected
+      // Add new assignment if department is selected and doesn't already exist
       if (assigned_department_id) {
-        console.log(`➕ Adding new assignment to department ${assigned_department_id}`)
-        try {
-          const success = await DepartmentServiceAPI.assignPorterToDepartment(
-            editingPorter.value.id,
-            assigned_department_id,
+        // Check if assignment already exists
+        const existingAssignment = existingAssignments.find(
+          (a) => a.department_id === assigned_department_id,
+        )
+
+        if (existingAssignment) {
+          console.log(
+            `ℹ️ Assignment to department ${assigned_department_id} already exists (ID: ${existingAssignment.id}) - skipping creation`,
           )
-          if (success) {
-            console.log(
-              `✅ Successfully updated porter ${editingPorter.value.name} assignment to department ${assigned_department_id}`,
+        } else {
+          console.log(`➕ Adding new assignment to department ${assigned_department_id}`)
+          try {
+            const success = await DepartmentServiceAPI.assignPorterToDepartment(
+              editingPorter.value.id,
+              assigned_department_id,
             )
-          } else {
-            console.error(
-              `❌ Failed to update porter ${editingPorter.value.name} assignment to department ${assigned_department_id}`,
-            )
+            if (success) {
+              console.log(
+                `✅ Successfully created new assignment for porter ${editingPorter.value.name} to department ${assigned_department_id}`,
+              )
+            } else {
+              console.error(
+                `❌ Failed to create assignment for porter ${editingPorter.value.name} to department ${assigned_department_id}`,
+              )
+            }
+          } catch (assignmentError) {
+            console.error('Failed to assign porter to department:', assignmentError)
           }
-        } catch (assignmentError) {
-          console.error('Failed to assign porter to department:', assignmentError)
         }
       } else {
-        console.log(`ℹ️ No new department assignment for porter ${editingPorter.value.name}`)
+        console.log(`ℹ️ No department assignment selected for porter ${editingPorter.value.name}`)
       }
     }
 
@@ -442,20 +459,20 @@ const clearSearch = () => {
   searchQuery.value = ''
 }
 
-// Create a computed property for porter department mappings
+// Create a computed property for porter department mappings using MOST RECENT assignment
 const porterDepartmentMap = computed(() => {
   const map = new Map<number, string>()
+  const mostRecentAssignments = getMostRecentAssignmentsByPorter(assignments.value)
 
-  assignments.value.forEach((assignment) => {
-    if (assignment.is_active) {
-      const department = departments.value.find((d) => d.id === assignment.department_id)
-      if (department) {
-        map.set(assignment.porter_id, department.name)
-      }
+  // Map porter IDs to their most recent department name
+  mostRecentAssignments.forEach((assignment, porterId) => {
+    const department = departments.value.find((d) => d.id === assignment.department_id)
+    if (department) {
+      map.set(porterId, department.name)
     }
   })
 
-  // console.log('🗺️ Porter department map:', Object.fromEntries(map))
+  console.log('🗺️ Porter department map (most recent assignments):', Object.fromEntries(map))
   return map
 })
 

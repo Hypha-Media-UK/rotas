@@ -13,7 +13,7 @@
     />
 
     <FormField
-      v-model="assignedDepartmentId"
+      v-model="form.assigned_department_id"
       label="Assign to Department"
       type="select"
       :options="departmentOptions"
@@ -144,6 +144,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import BaseForm from './BaseForm.vue'
 import FormField from './FormField.vue'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
+import { getCurrentDepartmentForPorter } from '@/utils/assignmentUtils'
 import type { PorterFormData, PorterType, Department } from '@/types'
 
 interface Props {
@@ -168,11 +169,9 @@ const form = ref<PorterFormData>({
   contracted_hours: {},
   break_duration_minutes: 60,
   shift_group: undefined,
+  assigned_department_id: undefined,
   department_assignments: [],
 })
-
-// Add assigned_department_id for the form
-const assignedDepartmentId = ref<number | undefined>(undefined)
 
 // Hours type selection (all-days, all-nights, or custom)
 const hoursType = ref<'all-days' | 'all-nights' | 'custom'>('all-days')
@@ -354,20 +353,26 @@ watch(
         hoursType.value = 'all-days'
       }
 
-      Object.assign(form.value, convertedData)
-
-      // Set assigned department if porter has department assignments
+      // Set assigned department using MOST RECENT assignment (not first)
       if (newData.department_assignments && newData.department_assignments.length > 0) {
-        assignedDepartmentId.value = newData.department_assignments[0].department_id
-        console.log(`📝 PorterForm: Set department assignment to ${assignedDepartmentId.value}`)
+        const currentDepartmentId = getCurrentDepartmentForPorter(newData.department_assignments)
+        convertedData.assigned_department_id = currentDepartmentId
+
+        console.log(`📝 PorterForm: Found ${newData.department_assignments.length} assignments`)
+        console.log(
+          `📝 PorterForm: Using MOST RECENT assignment to department ${convertedData.assigned_department_id}`,
+        )
       } else {
-        assignedDepartmentId.value = undefined
+        convertedData.assigned_department_id = undefined
         console.log(`📝 PorterForm: No department assignments found`)
       }
+
+      Object.assign(form.value, convertedData)
+      console.log(`📝 PorterForm: Form updated with:`, form.value)
     } else {
       // New porter - initialize with all-days default
       setHoursType('all-days')
-      assignedDepartmentId.value = undefined
+      form.value.assigned_department_id = undefined
       console.log(`📝 PorterForm: Reset for new porter`)
     }
   },
@@ -386,9 +391,9 @@ watch(
 
 // Debug watch for assigned department ID
 watch(
-  () => assignedDepartmentId.value,
+  () => form.value.assigned_department_id,
   (newValue, oldValue) => {
-    console.log(`📝 PorterForm: assignedDepartmentId changed from ${oldValue} to ${newValue}`)
+    console.log(`📝 PorterForm: assigned_department_id changed from ${oldValue} to ${newValue}`)
   },
 )
 
@@ -465,12 +470,8 @@ const isFormValid = computed(() => {
 
 const handleSubmit = () => {
   if (validateForm()) {
-    // Prepare form data with department assignment
-    const formData = {
-      ...form.value,
-      assigned_department_id: assignedDepartmentId.value,
-    }
-    emit('submit', formData)
+    console.log(`📝 PorterForm: Submitting form data:`, form.value)
+    emit('submit', form.value)
   }
 }
 </script>

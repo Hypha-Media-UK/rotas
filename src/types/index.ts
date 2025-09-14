@@ -190,6 +190,7 @@ export interface PorterFormData {
   contracted_hours?: Record<string, { start: string; end: string }>
   break_duration_minutes: number
   shift_group?: string
+  assigned_department_id?: number
   department_assignments: {
     department_id: number
     is_permanent: boolean

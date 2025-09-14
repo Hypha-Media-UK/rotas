@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { format } from 'date-fns'
+import { useRouter } from 'vue-router'
 import WeekNavigation from '@/components/WeekNavigation.vue'
 import DailyShiftView from '@/components/DailyShiftView.vue'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
 import { formatDate } from '@/utils/dateUtils'
+import { invalidateCache } from '@/utils/cache'
 import type { Department } from '@/types'
 
+const router = useRouter()
 const selectedDate = ref(new Date())
 const departments = ref<Department[]>([])
 
@@ -16,11 +19,32 @@ const selectedDateFormatted = computed(() => {
 
 const loadDepartments = async () => {
   try {
+    console.log('🏠 Loading departments for home page...')
     departments.value = await DepartmentServiceAPI.getAllDepartments()
+    console.log(`✅ Loaded ${departments.value.length} departments for home page`)
   } catch (error) {
     console.error('Failed to load departments:', error)
   }
 }
+
+const refreshAllData = async () => {
+  console.log('🔄 Refreshing all home page data...')
+  // Clear all caches to ensure fresh data
+  invalidateCache.all()
+  await loadDepartments()
+}
+
+// Watch for route changes to refresh data when navigating back to home
+watch(
+  () => router.currentRoute.value.path,
+  (newPath, oldPath) => {
+    // If we're navigating to the home page from another page, refresh data
+    if (newPath === '/' && oldPath && oldPath !== '/') {
+      console.log(`🔄 Navigated back to home from ${oldPath}, refreshing all data`)
+      setTimeout(() => refreshAllData(), 100) // Small delay to ensure component is ready
+    }
+  },
+)
 
 onMounted(() => {
   loadDepartments()

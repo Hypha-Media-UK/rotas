@@ -65,17 +65,22 @@ const debugInfo = computed(() => {
   const isPTSA = isDayShiftA
 
   return props.departments.map((dept) => {
-    const schedule = dept.operating_schedule
-    const operatesOnThisDay =
-      schedule.days_of_week.length === 0 || schedule.days_of_week.includes(dayOfWeek)
+    const operatingHours = dept.operating_hours
+    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][
+      dayOfWeek
+    ]
+    const operatesOnThisDay = operatingHours && operatingHours[dayName] !== null
 
     let reason = ''
     let shown = true
 
     if (!operatesOnThisDay) {
-      reason = `Closed on ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]} (operates: ${schedule.days_of_week.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') || 'All days'})`
+      const operatingDays = operatingHours
+        ? Object.keys(operatingHours).filter((day) => operatingHours[day] !== null)
+        : []
+      reason = `Closed on ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]} (operates: ${operatingDays.length > 0 ? operatingDays.join(', ') : 'All days'})`
       shown = false
-    } else if (dept.department_type === 'shift_rotation') {
+    } else if (dept.name.includes('Shift A') || dept.name.includes('Shift B')) {
       if (dept.name === 'Day Shift A') {
         reason = isDayShiftA ? 'Active (Day Shift A working)' : 'Off duty (Day Shift B working)'
         shown = isDayShiftA
@@ -102,7 +107,7 @@ const debugInfo = computed(() => {
         reason = 'Operating (shift rotation type)'
       }
     } else {
-      reason = `Operating (${dept.department_type})`
+      reason = `Operating (standard department)`
     }
 
     return { name: dept.name, reason, shown }
@@ -129,9 +134,11 @@ const displayDepartments = computed(() => {
   // Filter departments based on operating schedules and A/B rotation
   const filtered = props.departments.filter((dept) => {
     // First check if department operates on this day of week
-    const schedule = dept.operating_schedule
-    const operatesOnThisDay =
-      schedule.days_of_week.length === 0 || schedule.days_of_week.includes(dayOfWeek)
+    const operatingHours = dept.operating_hours
+    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][
+      dayOfWeek
+    ]
+    const operatesOnThisDay = operatingHours && operatingHours[dayName] !== null
 
     // If department doesn't operate on this day, don't show it
     if (!operatesOnThisDay) {
@@ -139,8 +146,8 @@ const displayDepartments = computed(() => {
       return false
     }
 
-    // For shift rotation departments (4-on/4-off), apply A/B logic
-    if (dept.department_type === 'shift_rotation') {
+    // For shift rotation departments (4-on/4-off), apply A/B logic based on department name
+    if (dept.name.includes('Shift A') || dept.name.includes('Shift B')) {
       // For Day Shift - only show the active one
       if (dept.name === 'Day Shift A') {
         console.log(`${isDayShiftA ? '✅' : '❌'} ${dept.name}: Day Shift A (${isDayShiftA})`)

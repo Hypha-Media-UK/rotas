@@ -55,10 +55,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { format, parseISO } from 'date-fns'
+import { useRouter } from 'vue-router'
 import { ShiftService } from '@/services/shiftService'
-import { PorterService } from '@/services/porterService'
+import { PorterServiceAPI } from '@/services/porterServiceAPI'
 import { DepartmentServiceAPI } from '@/services/departmentServiceAPI'
+import { ApiClient } from '@/services/apiClient'
 import { calculateTotalHours } from '@/utils/timeUtils'
+import { getPortersAssignedToDepartment } from '@/utils/assignmentUtils'
 import type {
   Department,
   Porter,
@@ -73,6 +76,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const router = useRouter()
 
 const assignments = ref<DailyAssignmentWithDetails[]>([])
 const availableReliefPorters = ref<Porter[]>([])
@@ -82,77 +86,139 @@ const formattedDate = computed(() => {
   return format(parseISO(props.date), 'EEEE, MMMM d')
 })
 
-// Calculate table rows with porter assignments and absence status
+// Calculate table rows based on porter availability and department operating hours
 const tableRows = computed((): DepartmentTableRow[] => {
   const rows: DepartmentTableRow[] = []
 
-  // Get assigned porters for this department
-  const deptAssignments = assignments.value.filter((a) => a.department_id === props.department.id)
+  // Get the day of week for the selected date
+  const dateObj = new Date(props.date)
+  const dayOfWeek = dateObj.getDay()
+  const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][
+    dayOfWeek
+  ]
 
-  console.log(`🔍 Computing table rows for ${props.department.name}:`)
-  console.log(`  - ${deptAssignments.length} daily assignments`)
-  console.log(`  - ${assignedPorters.value.length} assigned porters`)
+  // Check if department operates on this day
+  const departmentHours = props.department.operating_hours?.[dayName]
+  if (!departmentHours) {
+    console.log(`🚫 ${props.department.name} is closed on ${dayName}`)
+    return rows
+  }
 
-  if (deptAssignments.length === 0) {
-    console.log(`  → Using assigned porters (no daily assignments)`)
-    // If no assignments, show assigned porters from department
-    assignedPorters.value.forEach((porter) => {
-      if (porter.contracted_hours) {
-        const totalHours = getPorterTotalHours(
-          porter.contracted_hours,
-          porter.break_duration_minutes,
-        )
-        const absenceInfo = getPorterAbsenceInfo(porter.id)
+  console.log(`🔍 Computing table rows for ${props.department.name} on ${dayName}:`)
+  console.log(`  - Department hours: ${departmentHours.start} - ${departmentHours.end}`)
 
-        rows.push({
-          hours: porter.contracted_hours,
-          total_hours: totalHours,
-          allocated_porter: porter,
-          cover_porter: undefined,
-          is_porter_absent: absenceInfo.isAbsent,
-          absence_type: absenceInfo.type,
-          cover_porter_id: undefined,
-        })
-        console.log(`    + ${porter.name} (${porter.shift_group})`)
-      }
+  // Find porters whose contracted hours overlap with department operating hours
+  const availablePorters = assignedPorters.value.filter((porter) => {
+    if (!porter.contracted_hours || !porter.is_active) return false
+
+    const porterHours = porter.contracted_hours[dayName]
+    if (!porterHours) {
+      console.log(`  ❌ ${porter.name}: not working on ${dayName}`)
+      return false
+    }
+
+    // Check if porter's hours overlap with department hours
+    const porterStart = porterHours.start
+    const porterEnd = porterHours.end
+    const deptStart = departmentHours.start
+    const deptEnd = departmentHours.end
+
+    // Simple overlap check (assuming no midnight crossover for now)
+    const hasOverlap = porterStart < deptEnd && porterEnd > deptStart
+
+    if (hasOverlap) {
+      console.log(
+        `  ✅ ${porter.name}: ${porterStart}-${porterEnd} overlaps with ${deptStart}-${deptEnd}`,
+      )
+      return true
+    } else {
+      console.log(
+        `  ❌ ${porter.name}: ${porterStart}-${porterEnd} no overlap with ${deptStart}-${deptEnd}`,
+      )
+      return false
+    }
+  })
+
+  console.log(`  → Found ${availablePorters.length} available porters`)
+
+  // Create rows for available porters
+  availablePorters.forEach((porter) => {
+    const porterHours = porter.contracted_hours![dayName]!
+    const totalHours = calculatePorterDailyHours(porterHours, porter.break_duration_minutes)
+    const absenceInfo = getPorterAbsenceInfo(porter.id)
+
+    rows.push({
+      hours: `${porterHours.start} - ${porterHours.end}`,
+      total_hours: totalHours,
+      allocated_porter: porter,
+      cover_porter: undefined,
+      is_porter_absent: absenceInfo.isAbsent,
+      absence_type: absenceInfo.type,
+      cover_porter_id: undefined,
     })
-  } else {
-    console.log(`  → Using daily assignments`)
-    // Show actual daily assignments
-    deptAssignments.forEach((assignment) => {
-      if (assignment.porter) {
-        const totalHours = getPorterTotalHours(
-          assignment.porter.contracted_hours || '0800-2000',
-          assignment.porter.break_duration_minutes,
-        )
-        const absenceInfo = getPorterAbsenceInfo(assignment.porter.id)
+    console.log(`    + ${porter.name}: ${porterHours.start}-${porterHours.end} (${totalHours}h)`)
+  })
 
-        rows.push({
-          hours: assignment.porter.contracted_hours || '0800-2000',
-          total_hours: totalHours,
-          allocated_porter: assignment.porter,
-          cover_porter: assignment.cover_porter,
-          is_porter_absent: absenceInfo.isAbsent,
-          absence_type: absenceInfo.type,
-          cover_porter_id: assignment.cover_porter_id || undefined,
-        })
-        console.log(`    + ${assignment.porter.name} (${assignment.porter.shift_group})`)
-      }
-    })
+  // If no porters available, show empty row for minimum required staff
+  if (rows.length === 0) {
+    for (let i = 0; i < props.department.min_porters_required; i++) {
+      rows.push({
+        hours: `${departmentHours.start} - ${departmentHours.end}`,
+        total_hours: calculateDepartmentDailyHours(departmentHours),
+        allocated_porter: undefined,
+        cover_porter: undefined,
+        is_porter_absent: false,
+        cover_porter_id: undefined,
+      })
+    }
+    console.log(`  → Added ${props.department.min_porters_required} empty slots`)
   }
 
   console.log(`  → Final: ${rows.length} table rows`)
   return rows
 })
 
-// Use utility function for calculating total hours
-const getPorterTotalHours = (contractedHours: string, breakMinutes: number): string => {
-  return calculateTotalHours(contractedHours, breakMinutes)
+// Helper function to calculate daily hours for a porter
+const calculatePorterDailyHours = (
+  hours: { start: string; end: string },
+  breakMinutes: number,
+): number => {
+  const [startHour, startMin] = hours.start.split(':').map(Number)
+  const [endHour, endMin] = hours.end.split(':').map(Number)
+
+  let totalMinutes
+  if (endHour < startHour) {
+    // Night shift crossing midnight
+    totalMinutes = 24 * 60 - (startHour * 60 + startMin) + (endHour * 60 + endMin)
+  } else {
+    totalMinutes = endHour * 60 + endMin - (startHour * 60 + startMin)
+  }
+
+  const workingMinutes = totalMinutes - breakMinutes
+  return Math.max(0, workingMinutes / 60)
+}
+
+// Helper function to calculate department daily hours
+const calculateDepartmentDailyHours = (hours: { start: string; end: string }): number => {
+  const [startHour, startMin] = hours.start.split(':').map(Number)
+  const [endHour, endMin] = hours.end.split(':').map(Number)
+
+  let totalMinutes
+  if (endHour < startHour) {
+    // 24-hour operation crossing midnight
+    totalMinutes = 24 * 60 - (startHour * 60 + startMin) + (endHour * 60 + endMin)
+  } else {
+    totalMinutes = endHour * 60 + endMin - (startHour * 60 + startMin)
+  }
+
+  return totalMinutes / 60
 }
 
 // Check if porter is absent on the selected date
 const getPorterAbsenceInfo = (porterId: number): { isAbsent: boolean; type?: AbsenceType } => {
-  const absences = PorterService.getPorterAbsences(porterId, props.date, props.date)
+  // TODO: Implement getPorterAbsences in API - for now return no absences
+  // const absences = PorterServiceAPI.getPorterAbsences(porterId, props.date, props.date)
+  const absences: any[] = [] // Temporary until API is implemented
   if (absences.length > 0) {
     return { isAbsent: true, type: absences[0].type }
   }
@@ -221,7 +287,7 @@ const loadAssignments = async () => {
     console.log(
       `🔄 Loading assignments for ${props.department.name} (ID: ${props.department.id}) on ${props.date}`,
     )
-    assignments.value = ShiftService.getDailyAssignments(props.date)
+    assignments.value = await ShiftService.getDailyAssignments(props.date)
     console.log(`📋 Loaded ${assignments.value.length} assignments for ${props.date}`)
 
     // Filter for this department
@@ -247,39 +313,68 @@ const loadAssignments = async () => {
 
 const loadAvailablePorters = async () => {
   try {
-    availableReliefPorters.value = PorterService.getAvailablePorters(props.date, 'Relief')
-    // TODO: Implement getAssignedPorters in API
-    assignedPorters.value = [] // DepartmentServiceAPI.getAssignedPorters(props.department.id)
+    // Get all porters and assignments
+    const [allPorters, allAssignments] = await Promise.all([
+      PorterServiceAPI.getAllPorters(),
+      ApiClient.getAssignments(), // Get all assignments
+    ])
+
+    // Filter relief porters for cover options
+    availableReliefPorters.value = allPorters.filter((p) => p.type === 'Relief' && p.is_active)
+
+    // Find porters assigned to this department using MOST RECENT assignment logic
+    const assignedPorterIds = getPortersAssignedToDepartment(allAssignments, props.department.id)
+
+    assignedPorters.value = allPorters.filter(
+      (p) => assignedPorterIds.includes(p.id) && p.is_active,
+    )
+
     console.log(
       `👥 Loaded ${assignedPorters.value.length} assigned porters for ${props.department.name}:`,
       assignedPorters.value.map((p) => p.name),
     )
-
-    // Debug: Show permanent assignments for Ad-Hoc department
-    if (props.department.name === 'Ad-Hoc') {
-      // TODO: Implement getAllAssignments in API
-      const allAssignments = [] // DepartmentServiceAPI.getAllAssignments()
-      const adHocAssignments = allAssignments.filter((a) => a.department_id === props.department.id)
-      console.log(`🔍 Ad-Hoc permanent assignments:`, adHocAssignments)
-      console.log(`🔍 Ad-Hoc department ID:`, props.department.id)
-    }
+    console.log(`🔄 Loaded ${availableReliefPorters.value.length} relief porters for cover`)
   } catch (error) {
     console.error('Failed to load porters:', error)
+    // Fallback: use all active porters if assignment loading fails
+    try {
+      const allPorters = await PorterServiceAPI.getAllPorters()
+      assignedPorters.value = allPorters.filter((p) => p.is_active)
+      availableReliefPorters.value = allPorters.filter((p) => p.type === 'Relief' && p.is_active)
+    } catch (fallbackError) {
+      console.error('Failed to load fallback porters:', fallbackError)
+    }
   }
+}
+
+// Refresh all data
+const refreshData = async () => {
+  console.log(`🔄 Refreshing data for ${props.department.name}`)
+  await Promise.all([loadAssignments(), loadAvailablePorters()])
 }
 
 // Watch for date changes
 watch(
   () => props.date,
   () => {
-    loadAssignments()
-    loadAvailablePorters()
+    refreshData()
+  },
+)
+
+// Watch for route changes to refresh data when navigating back to home
+watch(
+  () => router.currentRoute.value.path,
+  (newPath, oldPath) => {
+    // If we're navigating to the home page from another page, refresh data
+    if (newPath === '/' && oldPath !== '/') {
+      console.log(`🔄 Navigated back to home from ${oldPath}, refreshing data`)
+      setTimeout(() => refreshData(), 100) // Small delay to ensure component is ready
+    }
   },
 )
 
 onMounted(() => {
-  loadAssignments()
-  loadAvailablePorters()
+  refreshData()
 })
 </script>
 

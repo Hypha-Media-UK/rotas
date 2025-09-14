@@ -286,9 +286,9 @@ const reorganizeStaffCategories = async () => {
   try {
     console.log('🔧 Reorganizing staff categories...')
 
-    // Import PorterService to access porters
-    const { PorterService } = await import('@/services/porterService')
-    const porters = PorterService.getAllPorters()
+    // Use PorterServiceAPI to access porters
+    const { PorterServiceAPI } = await import('@/services/porterServiceAPI')
+    const porters = await PorterServiceAPI.getAllPorters()
 
     let updatedCount = 0
 
@@ -324,11 +324,7 @@ const reorganizeStaffCategories = async () => {
       }
 
       // 3. Move PTS staff to PTS category (ensure they have PTS identifier)
-      if (
-        porter.name?.toLowerCase().includes('pts') ||
-        porter.shift_group?.includes('PTS') ||
-        porter.contracted_hours?.includes('PTS')
-      ) {
+      if (porter.name?.toLowerCase().includes('pts') || porter.shift_group?.includes('PTS')) {
         // Already identified as PTS, ensure they're Regular type
         if (porter.type !== 'Regular') {
           newType = 'Regular'

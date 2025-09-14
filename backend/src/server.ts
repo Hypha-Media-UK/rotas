@@ -45,7 +45,7 @@ app.get('/api/porters/:id', async (req, res) => {
 
 app.post('/api/porters', async (req, res) => {
   try {
-    const { name, employee_id, email, phone, role, qualifications } = req.body
+    const { name, employee_id, email, phone, role, qualifications, contracted_hours } = req.body
 
     if (!name || !employee_id || !email || !role) {
       return res.status(400).json({ error: 'Missing required fields' })
@@ -58,6 +58,7 @@ app.post('/api/porters', async (req, res) => {
       phone,
       role,
       qualifications,
+      contracted_hours,
     })
 
     res.status(201).json(porter)

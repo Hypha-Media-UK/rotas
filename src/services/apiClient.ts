@@ -6,6 +6,7 @@ import type {
   PorterDepartmentAssignment,
   ShiftType,
 } from '@/types'
+import { invalidateCache } from '@/utils/cache'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -103,35 +104,6 @@ export class ApiClient {
       requires_shift_support: false, // Default value
     }
   }
-  // Helper function to get default contracted hours based on role
-  private static getDefaultContractedHours(
-    role: string,
-  ): Record<string, { start: string; end: string }> {
-    // Determine hours based on role
-    if (role.toLowerCase().includes('night')) {
-      // Night shift: 20:00 - 08:00
-      return {
-        monday: { start: '20:00', end: '08:00' },
-        tuesday: { start: '20:00', end: '08:00' },
-        wednesday: { start: '20:00', end: '08:00' },
-        thursday: { start: '20:00', end: '08:00' },
-        friday: { start: '20:00', end: '08:00' },
-        saturday: { start: '20:00', end: '08:00' },
-        sunday: { start: '20:00', end: '08:00' },
-      }
-    } else {
-      // Day shift: 08:00 - 20:00 (default for all other roles)
-      return {
-        monday: { start: '08:00', end: '20:00' },
-        tuesday: { start: '08:00', end: '20:00' },
-        wednesday: { start: '08:00', end: '20:00' },
-        thursday: { start: '08:00', end: '20:00' },
-        friday: { start: '08:00', end: '20:00' },
-        saturday: { start: '08:00', end: '20:00' },
-        sunday: { start: '08:00', end: '20:00' },
-      }
-    }
-  }
 
   // Porter operations
   static async getPorters(): Promise<Porter[]> {
@@ -142,7 +114,7 @@ export class ApiClient {
       id: porter.id,
       name: porter.name,
       type: porter.role as any, // Map role to type
-      contracted_hours: this.getDefaultContractedHours(porter.role), // Generate default hours based on role
+      contracted_hours: porter.contracted_hours || undefined, // Use real contracted_hours from database
       break_duration_minutes: 30, // Default value
       shift_group: porter.shift_group || undefined, // Use actual shift_group from database
       is_active: Boolean(porter.is_active),
@@ -163,7 +135,7 @@ export class ApiClient {
         id: porter.id,
         name: porter.name,
         type: porter.role as any,
-        contracted_hours: this.getDefaultContractedHours(porter.role), // Generate default hours based on role
+        contracted_hours: porter.contracted_hours || undefined, // Use real contracted_hours from database
         break_duration_minutes: 30,
         shift_group: porter.role.includes('Day')
           ? 'Day Shift'
@@ -195,6 +167,7 @@ export class ApiClient {
     email?: string
     phone?: string
     qualifications?: string[]
+    contracted_hours?: Record<string, { start: string; end: string }>
   }): Promise<Porter> {
     // Generate employee_id and email if not provided
     const employee_id = porter.employee_id || `P${Date.now().toString().slice(-6)}`
@@ -210,6 +183,7 @@ export class ApiClient {
         phone: porter.phone,
         role: porter.type, // Map type to role
         qualifications: porter.qualifications || [],
+        contracted_hours: porter.contracted_hours,
       }),
     })
 
@@ -217,7 +191,7 @@ export class ApiClient {
       id: newPorter.id,
       name: newPorter.name,
       type: newPorter.role as any,
-      contracted_hours: undefined,
+      contracted_hours: newPorter.contracted_hours || undefined, // Use real data from backend
       break_duration_minutes: 30,
       shift_group: newPorter.role.includes('Day')
         ? 'Day Shift'
@@ -245,6 +219,8 @@ export class ApiClient {
     if (updates.email !== undefined) backendUpdates.email = updates.email
     if (updates.phone !== undefined) backendUpdates.phone = updates.phone
     if (updates.qualifications !== undefined) backendUpdates.qualifications = updates.qualifications
+    if (updates.contracted_hours !== undefined)
+      backendUpdates.contracted_hours = updates.contracted_hours
     if (updates.is_active !== undefined) backendUpdates.is_active = updates.is_active
     if (updates.shift_group !== undefined) backendUpdates.shift_group = updates.shift_group
 
@@ -526,6 +502,9 @@ export class ApiClient {
       body: JSON.stringify(assignment),
     })
 
+    // Invalidate assignment cache since we created a new assignment
+    invalidateCache.assignments()
+
     return {
       id: newAssignment.id,
       porter_id: newAssignment.porter_id,
@@ -560,17 +539,15 @@ export class ApiClient {
     })
   }
 
-  static async removePorterAssignment(porterId: number, departmentId: number): Promise<void> {
-    const assignments = await this.getPorterAssignments(porterId)
-    const assignment = assignments.find((a) => a.department_id === departmentId)
+  // NOTE: Backend API doesn't support updating assignments
+  // The updateAssignment method has been removed because PUT /assignments/{id} returns 404
 
-    if (assignment) {
-      await apiRequest(`/assignments/${assignment.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          is_active: false,
-        }),
-      })
-    }
+  static async removePorterAssignment(porterId: number, departmentId: number): Promise<void> {
+    // NOTE: Backend API doesn't support updating or deleting assignments
+    // This method is kept for compatibility but doesn't actually remove assignments
+    console.log(
+      `ℹ️ removePorterAssignment called for porter ${porterId} and department ${departmentId}`,
+    )
+    console.log(`ℹ️ Backend API doesn't support assignment removal - operation skipped`)
   }
 }

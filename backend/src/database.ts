@@ -18,6 +18,7 @@ export interface PorterRow {
   phone?: string
   role: string
   shift_group?: string
+  contracted_hours?: string // JSON string
   qualifications: string // JSON string
   is_active: boolean
   created_at: Date
@@ -97,6 +98,35 @@ export class DatabaseService {
     return this.connection!
   }
 
+  // Helper method to generate default contracted hours based on role
+  private static getDefaultContractedHours(
+    role: string,
+  ): Record<string, { start: string; end: string }> {
+    if (role.toLowerCase().includes('night')) {
+      // Night shift: 20:00 - 08:00
+      return {
+        monday: { start: '20:00', end: '08:00' },
+        tuesday: { start: '20:00', end: '08:00' },
+        wednesday: { start: '20:00', end: '08:00' },
+        thursday: { start: '20:00', end: '08:00' },
+        friday: { start: '20:00', end: '08:00' },
+        saturday: { start: '20:00', end: '08:00' },
+        sunday: { start: '20:00', end: '08:00' },
+      }
+    } else {
+      // Day shift: 08:00 - 20:00 (default for all other roles)
+      return {
+        monday: { start: '08:00', end: '20:00' },
+        tuesday: { start: '08:00', end: '20:00' },
+        wednesday: { start: '08:00', end: '20:00' },
+        thursday: { start: '08:00', end: '20:00' },
+        friday: { start: '08:00', end: '20:00' },
+        saturday: { start: '08:00', end: '20:00' },
+        sunday: { start: '08:00', end: '20:00' },
+      }
+    }
+  }
+
   // Porter operations
   static async getPorters(): Promise<PorterRow[]> {
     const conn = await this.ensureConnection()
@@ -120,18 +150,24 @@ export class DatabaseService {
     phone?: string
     role: string
     qualifications?: string[]
+    contracted_hours?: Record<string, { start: string; end: string }>
   }): Promise<PorterRow> {
     const conn = await this.ensureConnection()
 
+    // Generate default contracted hours if not provided
+    const defaultContractedHours =
+      porter.contracted_hours || this.getDefaultContractedHours(porter.role)
+
     const [result] = await conn.execute(
-      `INSERT INTO porters (name, employee_id, email, phone, role, qualifications, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO porters (name, employee_id, email, phone, role, contracted_hours, qualifications, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         porter.name,
         porter.employee_id,
         porter.email,
         porter.phone || null,
         porter.role,
+        JSON.stringify(defaultContractedHours),
         JSON.stringify(porter.qualifications || []),
         true,
       ],
@@ -151,6 +187,7 @@ export class DatabaseService {
       phone: string
       role: string
       shift_group: string
+      contracted_hours: Record<string, { start: string; end: string }>
       qualifications: string[]
       is_active: boolean
     }>,
@@ -161,7 +198,7 @@ export class DatabaseService {
 
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined) {
-        if (key === 'qualifications') {
+        if (key === 'qualifications' || key === 'contracted_hours') {
           fields.push(`${key} = ?`)
           values.push(JSON.stringify(value))
         } else {

@@ -8,7 +8,9 @@ import type {
   DailyAssignmentWithDetails,
   Department,
 } from '../types'
-import { jsonStorage } from './jsonStorage'
+import { PorterServiceAPI } from './porterServiceAPI'
+import { DepartmentServiceAPI } from './departmentServiceAPI'
+import { ApiClient } from './apiClient'
 
 // In-memory storage for demo purposes
 let shiftPatterns: ShiftPattern[] = []
@@ -230,7 +232,10 @@ export class ShiftService {
   }
 
   // Get daily assignments for a specific date
-  static getDailyAssignments(date: string, shiftType?: ShiftType): DailyAssignmentWithDetails[] {
+  static async getDailyAssignments(
+    date: string,
+    shiftType?: ShiftType,
+  ): Promise<DailyAssignmentWithDetails[]> {
     console.log(`🔍 Getting daily assignments for ${date}, shiftType: ${shiftType || 'any'}`)
 
     // Ensure shift patterns are initialized
@@ -243,31 +248,44 @@ export class ShiftService {
     // If no daily assignments exist, create them from permanent porter-department assignments
     if (existingAssignments.length === 0) {
       console.log(`🔧 Creating daily assignments from permanent assignments for ${date}`)
-      this.createDailyAssignmentsFromPermanent(date)
+      await this.createDailyAssignmentsFromPermanent(date)
       // Get the newly created assignments
-      const newAssignments = dailyAssignments
-        .filter((a) => a.date === date && (!shiftType || a.shift_type === shiftType))
-        .map((assignment) => this.enrichAssignmentWithDetails(assignment))
+      const newAssignments = await Promise.all(
+        dailyAssignments
+          .filter((a) => a.date === date && (!shiftType || a.shift_type === shiftType))
+          .map((assignment) => this.enrichAssignmentWithDetails(assignment)),
+      )
       console.log(`✅ Created ${newAssignments.length} daily assignments for ${date}`)
       return newAssignments
     }
 
     // Return existing assignments with full details
-    const filteredAssignments = existingAssignments
-      .filter((a) => !shiftType || a.shift_type === shiftType)
-      .map((assignment) => this.enrichAssignmentWithDetails(assignment))
+    const filteredAssignments = await Promise.all(
+      existingAssignments
+        .filter((a) => !shiftType || a.shift_type === shiftType)
+        .map((assignment) => this.enrichAssignmentWithDetails(assignment)),
+    )
     console.log(`📤 Returning ${filteredAssignments.length} existing assignments for ${date}`)
     return filteredAssignments
   }
 
   // Create daily assignments from permanent porter-department assignments
-  private static createDailyAssignmentsFromPermanent(date: string): void {
-    const assignments = jsonStorage.getAllAssignments()
-    const departments = jsonStorage.getAllDepartments()
-    const porters = jsonStorage.getAllPorters()
+  private static async createDailyAssignmentsFromPermanent(date: string): Promise<void> {
+    let assignments, departments, porters
 
-    console.log(`🔧 Creating assignments from ${assignments.length} permanent assignments`)
-    console.log(`📊 Available: ${departments.length} departments, ${porters.length} porters`)
+    try {
+      ;[assignments, departments, porters] = await Promise.all([
+        ApiClient.getAssignments(),
+        DepartmentServiceAPI.getAllDepartments(),
+        PorterServiceAPI.getAllPorters(),
+      ])
+
+      console.log(`🔧 Creating assignments from ${assignments.length} permanent assignments`)
+      console.log(`📊 Available: ${departments.length} departments, ${porters.length} porters`)
+    } catch (error) {
+      console.error('❌ Error fetching data for daily assignments:', error)
+      return
+    }
 
     let createdCount = 0
 
@@ -331,29 +349,36 @@ export class ShiftService {
   }
 
   // Enrich assignment with department and porter details
-  private static enrichAssignmentWithDetails(
+  private static async enrichAssignmentWithDetails(
     assignment: DailyAssignment,
-  ): DailyAssignmentWithDetails {
-    const departments = jsonStorage.getAllDepartments()
-    const porters = jsonStorage.getAllPorters()
+  ): Promise<DailyAssignmentWithDetails> {
+    try {
+      const [departments, porters] = await Promise.all([
+        DepartmentServiceAPI.getAllDepartments(),
+        PorterServiceAPI.getAllPorters(),
+      ])
 
-    const department = departments.find((d) => d.id === assignment.department_id)
-    const porter = assignment.porter_id
-      ? porters.find((p) => p.id === assignment.porter_id)
-      : undefined
-    const coverPorter = assignment.cover_porter_id
-      ? porters.find((p) => p.id === assignment.cover_porter_id)
-      : undefined
+      const department = departments.find((d) => d.id === assignment.department_id)
+      const porter = assignment.porter_id
+        ? porters.find((p) => p.id === assignment.porter_id)
+        : undefined
+      const coverPorter = assignment.cover_porter_id
+        ? porters.find((p) => p.id === assignment.cover_porter_id)
+        : undefined
 
-    if (!department) {
-      throw new Error(`Department not found for assignment ${assignment.id}`)
-    }
+      if (!department) {
+        throw new Error(`Department not found for assignment ${assignment.id}`)
+      }
 
-    return {
-      ...assignment,
-      department,
-      porter,
-      cover_porter: coverPorter,
+      return {
+        ...assignment,
+        department,
+        porter,
+        cover_porter: coverPorter,
+      }
+    } catch (error) {
+      console.error('❌ Error enriching assignment with details:', error)
+      throw error
     }
   }
 

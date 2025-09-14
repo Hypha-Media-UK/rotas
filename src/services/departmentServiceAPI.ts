@@ -1,13 +1,27 @@
 import type { Department, DepartmentFormData } from '@/types'
 import { ApiClient } from './apiClient'
+import { apiCache, cacheKeys, invalidateCache } from '../utils/cache'
 
 export class DepartmentServiceAPI {
   // Get all departments
   static async getAllDepartments(): Promise<Department[]> {
+    const cacheKey = cacheKeys.allDepartments()
+
+    // Try to get from cache first
+    const cached = apiCache.get<Department[]>(cacheKey)
+    if (cached) {
+      console.log(`🚀 Retrieved ${cached.length} departments from cache`)
+      return cached
+    }
+
     try {
       console.log('🔍 Fetching all departments from API...')
       const departments = await ApiClient.getDepartments()
       console.log(`✅ Successfully fetched ${departments.length} departments from API`)
+
+      // Cache the result for 5 minutes
+      apiCache.set(cacheKey, departments, 5 * 60 * 1000)
+
       return departments
     } catch (error) {
       console.error('❌ Error fetching departments from API:', error)
@@ -176,6 +190,10 @@ export class DepartmentServiceAPI {
       console.log(
         `✅ Successfully assigned porter ${porterId} to department ${departmentId} via API`,
       )
+
+      // Invalidate assignment cache since we created a new assignment
+      invalidateCache.assignments()
+
       return true
     } catch (error) {
       console.error(
@@ -187,12 +205,25 @@ export class DepartmentServiceAPI {
   }
 
   static async getPorterAssignments(porterId: number): Promise<any[]> {
+    const cacheKey = cacheKeys.porterAssignments(porterId)
+
+    // Try to get from cache first
+    const cached = apiCache.get<any[]>(cacheKey)
+    if (cached) {
+      console.log(`🚀 Retrieved ${cached.length} assignments for porter ${porterId} from cache`)
+      return cached
+    }
+
     try {
       console.log(`🔍 Fetching assignments for porter ${porterId} via API...`)
       const assignments = await ApiClient.getPorterAssignments(porterId)
       console.log(
         `✅ Successfully fetched ${assignments.length} assignments for porter ${porterId} via API`,
       )
+
+      // Cache the result for 5 minutes
+      apiCache.set(cacheKey, assignments, 5 * 60 * 1000)
+
       return assignments
     } catch (error) {
       console.error(`❌ Error fetching assignments for porter ${porterId} via API:`, error)
