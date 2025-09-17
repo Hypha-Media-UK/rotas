@@ -109,6 +109,21 @@ export class DepartmentServiceAPI {
     }
   }
 
+  // Reorder departments
+  static async reorderDepartments(departmentIds: number[]): Promise<void> {
+    try {
+      console.log(`🔄 Reordering ${departmentIds.length} departments via API...`)
+      await ApiClient.reorderDepartments(departmentIds)
+      console.log(`✅ Successfully reordered departments via API`)
+
+      // Invalidate cache since department order has changed
+      invalidateCache.departments()
+    } catch (error) {
+      console.error(`❌ Error reordering departments via API:`, error)
+      throw error
+    }
+  }
+
   // Get active departments
   static async getActiveDepartments(): Promise<Department[]> {
     try {

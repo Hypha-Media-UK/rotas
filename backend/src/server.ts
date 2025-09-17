@@ -139,6 +139,27 @@ app.post('/api/departments', async (req, res) => {
   }
 })
 
+app.put('/api/departments/reorder', async (req, res) => {
+  try {
+    const { departmentIds } = req.body
+
+    if (!Array.isArray(departmentIds) || departmentIds.length === 0) {
+      return res.status(400).json({ error: 'departmentIds must be a non-empty array' })
+    }
+
+    // Validate that all items are numbers
+    if (!departmentIds.every((id) => typeof id === 'number' && Number.isInteger(id))) {
+      return res.status(400).json({ error: 'All departmentIds must be integers' })
+    }
+
+    await DatabaseService.reorderDepartments(departmentIds)
+    res.json({ message: 'Departments reordered successfully' })
+  } catch (error) {
+    console.error('Error reordering departments:', error)
+    res.status(500).json({ error: 'Failed to reorder departments' })
+  }
+})
+
 app.put('/api/departments/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id)

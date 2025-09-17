@@ -16,15 +16,22 @@
       </button>
     </div>
 
+    <!-- Reordering indicator -->
+    <div v-if="isReordering" class="reordering-indicator">
+      <span>🔄 Saving new order...</span>
+    </div>
+
     <!-- Department List -->
-    <div class="department-list">
+    <div class="department-list" :class="{ reordering: isReordering }">
       <div
         v-for="(department, index) in departmentsDisplay"
         :key="department.id"
         class="department-card"
+        :class="{ dragging: draggedIndex === index }"
         draggable="true"
         @dragstart="handleDragStart(index)"
         @dragover.prevent
+        @dragenter.prevent
         @drop="handleDrop(index)"
       >
         <div class="department-info">
@@ -186,6 +193,7 @@ const departments = ref<Department[]>([])
 const showAddModal = ref(false)
 const editingDepartment = ref<Department | null>(null)
 const draggedIndex = ref<number | null>(null)
+const isReordering = ref(false)
 
 // Day names for the schedule
 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -193,9 +201,9 @@ const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 // Schedule preset mode
 const schedulePreset = ref<'custom' | '24hours'>('custom')
 
-// Computed property to get display data for departments, considering active edits
+// Computed property to get display data for departments, considering active edits and sorting by display_order
 const departmentsDisplay = computed(() => {
-  return departments.value.map((department) => {
+  const displayDepartments = departments.value.map((department) => {
     // If this department is being edited, use the form data for display
     if (editingDepartment.value && editingDepartment.value.id === department.id) {
       return {
@@ -208,6 +216,9 @@ const departmentsDisplay = computed(() => {
     // Otherwise use the original department data
     return department
   })
+
+  // Sort by display_order
+  return displayDepartments.sort((a, b) => a.display_order - b.display_order)
 })
 
 // Form data structure matching the database schema
@@ -505,15 +516,26 @@ const handleDrop = async (dropIndex: number) => {
   const draggedDepartment = reorderedDepartments.splice(draggedIndex.value, 1)[0]
   reorderedDepartments.splice(dropIndex, 0, draggedDepartment)
 
-  // Update display order
+  // Update local state immediately for better UX
+  departments.value = reorderedDepartments
+
+  // Update display order in database
   const departmentIds = reorderedDepartments.map((dept) => dept.id)
 
+  isReordering.value = true
   try {
-    // TODO: Implement reorderDepartments in API
-    // DepartmentServiceAPI.reorderDepartments(departmentIds)
+    console.log('🔄 Reordering departments:', departmentIds)
+    await DepartmentServiceAPI.reorderDepartments(departmentIds)
+    console.log('✅ Successfully reordered departments')
+
+    // Reload departments to get the updated display_order values from the database
     await loadDepartments()
   } catch (error) {
-    console.error('Failed to reorder departments:', error)
+    console.error('❌ Failed to reorder departments:', error)
+    // Revert local state on error
+    await loadDepartments()
+  } finally {
+    isReordering.value = false
   }
 
   draggedIndex.value = null
@@ -552,9 +574,24 @@ onMounted(() => {
   margin-bottom: var(--spacing-lg);
 }
 
+.reordering-indicator {
+  background: var(--color-primary);
+  color: white;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius);
+  text-align: center;
+  margin-bottom: var(--spacing-md);
+  font-weight: 500;
+}
+
 .department-list {
   display: grid;
   gap: var(--spacing-md);
+}
+
+.department-list.reordering {
+  pointer-events: none;
+  opacity: 0.7;
 }
 
 .department-card {
@@ -572,6 +609,20 @@ onMounted(() => {
 
 .department-card:hover {
   box-shadow: var(--shadow-md);
+}
+
+.department-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+  box-shadow: var(--shadow-lg);
+}
+
+.department-card:hover:not(.dragging) {
+  cursor: grab;
+}
+
+.department-card:active {
+  cursor: grabbing;
 }
 
 .department-header {

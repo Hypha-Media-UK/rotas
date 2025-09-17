@@ -226,7 +226,7 @@ export class DatabaseService {
   static async getDepartments(): Promise<DepartmentRow[]> {
     const conn = await this.ensureConnection()
     const [rows] = await conn.execute(
-      'SELECT * FROM departments WHERE is_active = TRUE ORDER BY name',
+      'SELECT * FROM departments WHERE is_active = TRUE ORDER BY display_order, name',
     )
     return rows as DepartmentRow[]
   }
@@ -304,6 +304,33 @@ export class DatabaseService {
   static async deleteDepartment(id: number): Promise<void> {
     const conn = await this.ensureConnection()
     await conn.execute('UPDATE departments SET is_active = FALSE WHERE id = ?', [id])
+  }
+
+  static async reorderDepartments(departmentIds: number[]): Promise<void> {
+    const conn = await this.ensureConnection()
+
+    // Start a transaction to ensure all updates happen atomically
+    await conn.beginTransaction()
+
+    try {
+      // Update each department's display_order based on its position in the array
+      for (let i = 0; i < departmentIds.length; i++) {
+        const departmentId = departmentIds[i]
+        const displayOrder = i + 1
+
+        await conn.execute(
+          'UPDATE departments SET display_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_active = TRUE',
+          [displayOrder, departmentId],
+        )
+      }
+
+      // Commit the transaction
+      await conn.commit()
+    } catch (error) {
+      // Rollback on error
+      await conn.rollback()
+      throw error
+    }
   }
 
   // Shift Pattern operations

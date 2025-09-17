@@ -29,11 +29,6 @@ const router = createRouter({
       name: 'shift-management',
       component: () => import('../views/ShiftManagementView.vue'),
     },
-    {
-      path: '/mysql-test',
-      name: 'mysql-test',
-      component: () => import('../views/MySQLTestView.vue'),
-    },
   ],
 })
 

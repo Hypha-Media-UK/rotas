@@ -355,7 +355,7 @@ export class ApiClient {
     return departments.map((dept) => ({
       id: dept.id,
       name: dept.name,
-      display_order: 1, // Default value
+      display_order: dept.display_order || 1,
       min_porters_required: dept.required_staff,
       operating_hours: dept.operating_hours,
       created_at: dept.created_at,
@@ -371,7 +371,7 @@ export class ApiClient {
       return {
         id: dept.id,
         name: dept.name,
-        display_order: 1,
+        display_order: dept.display_order || 1,
         min_porters_required: dept.required_staff,
         operating_hours: dept.operating_hours,
         created_at: dept.created_at,
@@ -422,7 +422,7 @@ export class ApiClient {
     return {
       id: newDept.id,
       name: newDept.name,
-      display_order: 1,
+      display_order: newDept.display_order || 1,
       min_porters_required: newDept.required_staff,
       operating_hours: newDept.operating_hours,
       created_at: newDept.created_at,
@@ -450,6 +450,13 @@ export class ApiClient {
   static async deleteDepartment(id: number): Promise<void> {
     await apiRequest(`/departments/${id}`, {
       method: 'DELETE',
+    })
+  }
+
+  static async reorderDepartments(departmentIds: number[]): Promise<void> {
+    await apiRequest('/departments/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ departmentIds }),
     })
   }
 
